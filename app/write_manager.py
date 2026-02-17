@@ -203,18 +203,6 @@ class QuoteModifier:
         if person_folder.exists():
             shutil.rmtree(person_folder)
 
-        # remove from groups
-        if self.groups_file.exists():
-            data = self._load_groups()
-            changed = False
-            for group in data:
-                new_members = [p for p in data[group] if p != name]
-                if len(new_members) != len(data[group]):
-                    data[group] = new_members
-                    changed = True
-            if changed:
-                self._save_groups(data)
-
     def rename_person(self, old: str, new: str):
         if old == new:
             return

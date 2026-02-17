@@ -3,7 +3,7 @@ from PySide6.QtWidgets import (
     QPushButton, QMessageBox, QInputDialog,
     QLabel, QTextEdit, QDialog, QMenu, QToolButton
 )
-from PySide6.QtCore import QSize, Qt, QCoreApplication
+from PySide6.QtCore import QSize, Qt
 
 from pathlib import Path
 import logging
@@ -46,7 +46,7 @@ class EditEntriesWidget(QWidget):
             person_right_widget_builder=self._person_buttons
         )
 
-        # avatar click handler
+        # avatar click handler (toggle set/replace/remove)
         self.selector.avatar_click_handler = self._toggle_person_pfp
         self._update_selector_avatar_cursors()
 
@@ -70,18 +70,17 @@ class EditEntriesWidget(QWidget):
         lay.setSpacing(4)
 
         rename_btn = QPushButton()
-        # icon
+        # use new icon API
         icon(rename_btn, "edit", 14)
         rename_btn.setFixedSize(QSize(20, 20))
         rename_btn.setCursor(Qt.PointingHandCursor)
-        # bind in closure
-        rename_btn.clicked.connect(lambda g=group: self.rename_group(g))
+        rename_btn.clicked.connect(lambda: self.rename_group(group))
 
         delete_btn = QPushButton()
         icon(delete_btn, "delete", 14)
         delete_btn.setFixedSize(QSize(20, 20))
         delete_btn.setCursor(Qt.PointingHandCursor)
-        delete_btn.clicked.connect(lambda g=group: self.remove_group(g))
+        delete_btn.clicked.connect(lambda: self.remove_group(group))
 
         lay.addWidget(rename_btn)
         lay.addWidget(delete_btn)
@@ -98,30 +97,28 @@ class EditEntriesWidget(QWidget):
             icon(remove_from_group_btn, "group_remove", 14)
             remove_from_group_btn.setFixedSize(QSize(20, 20))
             remove_from_group_btn.setCursor(Qt.PointingHandCursor)
-            # bind closure
-            remove_from_group_btn.clicked.connect(lambda g=group, p=person: self.remove_from_group(g, p))
+            remove_from_group_btn.clicked.connect(lambda: self.remove_from_group(group, person))
             lay.addWidget(remove_from_group_btn)
 
         add_to_group_btn = QPushButton()
         icon(add_to_group_btn, "group_add", 14)
         add_to_group_btn.setFixedSize(QSize(20, 20))
         add_to_group_btn.setCursor(Qt.PointingHandCursor)
-        add_to_group_btn.clicked.connect(lambda p=person: self.add_to_group(p))
+        add_to_group_btn.clicked.connect(lambda: self.add_to_group(person))
         lay.addWidget(add_to_group_btn)
 
         edit_btn = QPushButton()
         icon(edit_btn, "edit", 14)
         edit_btn.setFixedSize(QSize(20, 20))
         edit_btn.setCursor(Qt.PointingHandCursor)
-        # stable menu & person
-        edit_btn.clicked.connect(lambda b=edit_btn, p=person: self._open_person_menu(b, p))
+        edit_btn.clicked.connect(lambda: self._open_person_menu(edit_btn, person))
         lay.addWidget(edit_btn)
 
         delete_btn = QPushButton()
         icon(delete_btn, "delete", 14)
         delete_btn.setFixedSize(QSize(20, 20))
         delete_btn.setCursor(Qt.PointingHandCursor)
-        delete_btn.clicked.connect(lambda p=person: self.remove_person(p))
+        delete_btn.clicked.connect(lambda: self.remove_person(person))
         lay.addWidget(delete_btn)
 
         return container
@@ -198,7 +195,7 @@ class EditEntriesWidget(QWidget):
             self._reload()
 
     def _toggle_person_pfp(self, person: str):
-        # toggle/set/replace/remove profile picture
+        # toggle/set/replace/remove profile picture for person
         current = None
         try:
             current = self.storage.people.get(person)
@@ -207,7 +204,7 @@ class EditEntriesWidget(QWidget):
 
         current_path = Path(current) if current else None
 
-        # DEFAULT_AVATAR not custom
+        # treat DEFAULT_AVATAR as not custom
         has_custom = False
         try:
             if current_path and current_path.exists():
@@ -216,7 +213,7 @@ class EditEntriesWidget(QWidget):
             has_custom = False
 
         if has_custom:
-            # prompt options
+            # prompt remove/replace/cancel
             msg = QMessageBox(self)
             msg.setWindowTitle("Profile Picture")
             msg.setText(f'"{person}" already has a profile picture. What would you like to do?')
@@ -286,7 +283,7 @@ class EditEntriesWidget(QWidget):
             self._reload()
 
     def _update_selector_avatar_cursors(self):
-        # set avatar cursors
+        # set cursors and detect group vs person avatars
         for btn in self.selector.findChildren(QPushButton):
             btn.setCursor(Qt.PointingHandCursor)
 
@@ -299,7 +296,7 @@ class EditEntriesWidget(QWidget):
         except Exception:
             people_keys = set()
 
-        # strip trailing ' (N)'
+        # strip trailing " (N)" from labels
         def plain_name_from_label_text(text: str) -> str:
             if not text:
                 return ""
@@ -311,7 +308,7 @@ class EditEntriesWidget(QWidget):
         widgets.extend(self.selector.findChildren(QToolButton))
 
         for w in widgets:
-            # detect pixmap/icon
+            # detect if widget has pixmap/icon
             has_pix = False
             try:
                 if isinstance(w, QLabel):
@@ -335,6 +332,7 @@ class EditEntriesWidget(QWidget):
             if not has_pix:
                 continue
 
+            # default to person avatar
             desired_cursor = Qt.PointingHandCursor
 
             parent = w.parent()
@@ -368,35 +366,13 @@ class EditEntriesWidget(QWidget):
 
     def _reload(self):
         # reload storage and rebuild selector
-        try:
-            self.storage.load_index()
-        except Exception:
-            log.exception("storage.load_index failed during reload")
-
+        self.storage.load_index()
         self.modifier = QuoteModifier(self.storage.root)
 
         layout = self.layout()
+        layout.removeWidget(self.selector)
+        self.selector.deleteLater()
 
-        # remove previous selector to avoid artifacts
-        try:
-            if hasattr(self, "selector") and self.selector is not None:
-                try:
-                    layout.removeWidget(self.selector)
-                except Exception:
-                    pass
-                try:
-                    self.selector.setParent(None)
-                except Exception:
-                    pass
-                try:
-                    self.selector.deleteLater()
-                except Exception:
-                    pass
-                QCoreApplication.processEvents()
-        except Exception:
-            log.exception("error while removing old selector")
-
-        # create new selector
         self.selector = PersonGroupSelector(
             self.storage,
             show_checkboxes=False,
@@ -404,19 +380,6 @@ class EditEntriesWidget(QWidget):
             person_right_widget_builder=self._person_buttons
         )
 
-        # avatar click handler
         self.selector.avatar_click_handler = self._toggle_person_pfp
-
-        layout.addWidget(self.selector)
-        self.selector.show()
-
-        # update cursors
         self._update_selector_avatar_cursors()
-
-        # final repaint
-        try:
-            self.selector.update()
-            self.selector.repaint()
-            self.updateGeometry()
-        except Exception:
-            pass
+        layout.addWidget(self.selector)

@@ -1,6 +1,8 @@
-# QuoteZ — Smart, human-friendly quote management
+# QuoteZ — Quickly note & Zealously recall
 
 QuoteZ is a lightweight app for taking and reading quotes. Add people, put them into groups, and create multi-speaker quotes. Designed for authors, podcasters, researchers, and anyone who collects spoken or written snippets.
+
+![Main view](github/screenshot-1.png)
 
 ---
 
@@ -20,10 +22,6 @@ Uses QuoteZ’s own concise, human-readable single-line format for easy reading,
 
 Filter by newest/oldest, date range, character-length range, and keyword search with powerful operators (wildcards, AND/OR/NOT, grouping). Designed for fast, precise digging through big quote sets.
 
-## Main view
-
-![Main view](github/screenshot-1.png)
-
 ## Features
 
 * **People** — create named people with optional notes and nicknames (aliases).
@@ -36,10 +34,6 @@ Filter by newest/oldest, date range, character-length range, and keyword search 
 
 QuoteZ uses a concise, human-readable single-line record format with required timestamps and required URLs. The timestamp uses `yyyy-MM-dd;hhh:mm:ss`. The quote body supports multiple speakers via inline attribution.
 
-## Multi-quote editor
-
-QuoteZ multi-quote editor
-
 ## Examples & tips
 
 * **Character notes:** Use groups for story casts so you can filter quotes per scene.
@@ -47,6 +41,24 @@ QuoteZ multi-quote editor
 * **Source-linked quotes:** Every quote includes a required URL so you can jump back to the exact source (episode, page, timestamp).
 
 ## Build
+
+Install required packages (Debian):
+
+```bash
+sudo apt install -y flatpak flatpak-builder git python3 python3-pip python3-venv build-essential python3-dev libffi-dev libssl-dev pkg-config curl
+```
+
+Make sure you have flathub setup:
+
+```bash
+sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+```
+
+Install required packages (Flatpak):
+
+```bash
+flatpak-builder --force-clean --install-deps-from=flathub build-dir io.github.quotezproject.quotez.json
+```
 
 To build cd into the main directory and use the commands:
 

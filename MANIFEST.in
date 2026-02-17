@@ -1,0 +1,4 @@
+include README.md
+recursive-include assets *
+recursive-include app *.json *.png *.qml *.svg
+include settings.json

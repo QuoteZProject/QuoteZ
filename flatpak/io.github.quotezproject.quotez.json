@@ -1,0 +1,40 @@
+{
+  "id": "io.github.quotezproject.quotez",
+  "runtime": "org.kde.Platform",
+  "runtime-version": "6.9",
+  "sdk": "org.kde.Sdk",
+  "base": "io.qt.PySide.BaseApp",
+  "base-version": "6.9",
+  "command": "quotez",
+  "finish-args": [
+    "--share=ipc",
+    "--socket=fallback-x11",
+    "--socket=wayland",
+    "--device=dri",
+    "--socket=pulseaudio",
+    "--talk-name=org.freedesktop.Notifications",
+    "--filesystem=xdg-pictures"
+  ],
+  "modules": [
+    {
+      "name": "QuoteZ",
+      "buildsystem": "simple",
+      "build-commands": [
+        "python3 -m pip install --no-build-isolation --prefix=/app .",
+        "install -Dm644 assets/default.png /app/share/quotez/default.png",
+        "install -Dm644 flatpak/quotez.desktop /app/share/applications/io.github.quotezproject.quotez.desktop",
+        "install -Dm644 assets/logo.svg /app/share/icons/hicolor/scalable/apps/io.github.quotezproject.quotez.svg",
+        "install -Dm644 flatpak/io.github.quotezproject.quotez.appdata.xml /app/share/metainfo/io.github.quotezproject.quotez.appdata.xml"
+      ],
+      "sources": [
+        {
+          "type": "dir",
+          "path": ".."
+        }
+      ]
+    }
+  ],
+  "cleanup-commands": [
+    "/app/cleanup-BaseApp.sh"
+  ]
+}

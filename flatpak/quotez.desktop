@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=QuoteZ
+Comment=Simple quote manager
+Exec=quotez
+Icon=io.github.quotezproject.quotez
+X-Flatpak-Version=1.0.0
+Terminal=false
+Categories=Utility
+StartupWMClass=QuoteZ
+X-GNOME-FullName=QuoteZ

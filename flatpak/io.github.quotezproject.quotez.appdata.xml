@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component type="desktop">
+    <id>io.github.quotezproject.quotez</id>
+    <metadata_license>CC0-1.0</metadata_license>
+    <name>QuoteZ</name>
+    <summary>Simple quote manager</summary>
+    <description>
+        <p>QuoteZ is a small app for collecting and browsing quotes with avatars and timestamps.</p>
+    </description>
+    <releases>
+        <release version="1.0.0" date="2026-02-17"/>
+    </releases>
+</component>

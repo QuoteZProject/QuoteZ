@@ -59,3 +59,7 @@ Create a flatpak file with:
 ```bash
 flatpak build-bundle flatpak/builder/repo flatpak/builder/QuoteZ.flatpak io.github.quotezproject.quotez
 ```
+
+## DISCLAIMER
+
+This was fully vibe-coded, i do not know how to code!

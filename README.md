@@ -22,9 +22,7 @@ Filter by newest/oldest, date range, character-length range, and keyword search 
 
 ## Main view
 
-QuoteZ main view
-
-See storage examples
+![Main view](github/screenshot-1.png)
 
 ## Features
 

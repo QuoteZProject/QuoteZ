@@ -1,44 +1,24 @@
 # QuoteZ — Quickly note & Zealously recall
 
-QuoteZ is a lightweight app for taking and reading quotes. Add people, put them into groups, and create multi-speaker quotes. Designed for authors, podcasters, researchers, and anyone who collects spoken or written snippets.
+A seamless way to capture, organize, and rediscover the quotes that resonate with you. Build and manage your personal collection with ease.
 
 ![Main view](github/screenshot-1.png)
 
 ---
 
-## People & Groups
-
-Create people, assign to multiple groups (e.g. characters, interviewees, team).
-
-## Multi-Quote
-
-Quotes can contain multiple speakers on the same line using repeated speaker tags; timestamps are required.
-
-## Human-readable format
-
-Uses QuoteZ’s own concise, human-readable single-line format for easy reading, diffing, and versioning.
-
-## Advanced Search
-
-Filter by newest/oldest, date range, character-length range, and keyword search with powerful operators (wildcards, AND/OR/NOT, grouping). Designed for fast, precise digging through big quote sets.
-
 ## Features
 
-* **People** — create named people with optional notes and nicknames (aliases).
-* **Groups** — group people into any number of groups (tags, casts, teams).
-* **Multi-quote** — compose quotes with more than one speaker on the same line using repeated speaker tags; timestamps are required.
-* **Nicknames on copy** — copying a quote uses the speaker’s nickname; if multiple nicknames exist, QuoteZ prompts you to choose.
-* **Search & Filter** — search by text, person, group or date; filter multi-quote participants.
+### One-Click Actions
+Streamline your workflow with instant access to essential tools. Copy quote text, edit existing entries, or remove outdated quotes with a single click.
 
-## Storage format
+### Multi-Speaker Quotes
+Handle complex dialogues with ease. A single entry can capture interactions between multiple people, ensuring no part of the conversation is lost.
 
-QuoteZ uses a concise, human-readable single-line record format with required timestamps and required URLs. The timestamp uses `yyyy-MM-dd;hhh:mm:ss`. The quote body supports multiple speakers via inline attribution.
+### Smart Grouping
+Keep your library structured and intuitive. Organize your collection using person-specific categories and custom groups to find what matters most.
 
-## Examples & tips
-
-* **Character notes:** Use groups for story casts so you can filter quotes per scene.
-* **Interview transcripts:** Use multi-quote turns with timestamps to reconstruct the flow.
-* **Source-linked quotes:** Every quote includes a required URL so you can jump back to the exact source (episode, page, timestamp).
+### Powerful Filtering
+Navigate large collections without the noise. Quickly narrow down your entries by date, character length, specific people, or assigned groups.
 
 ## Build
 

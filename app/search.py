@@ -25,13 +25,13 @@ def sort_quotes(results: List[Tuple], *, sort_mode: Optional[str], people_filter
 
     # Default: newest quote if no explicit sort
     if not sort_mode:
-        return sorted(results, key=lambda r: (r[1].date, r[1].timestamp), reverse=True)
+        return sorted(results, key=lambda r: (r[1].date, r[1].time, r[1].timestamp or ""), reverse=True)
 
     if sort_mode == "Newest quote":
-        return sorted(results, key=lambda r: (r[1].date, r[1].timestamp), reverse=True)
+        return sorted(results, key=lambda r: (r[1].date, r[1].time, r[1].timestamp or ""), reverse=True)
 
     if sort_mode == "Oldest quote":
-        return sorted(results, key=lambda r: (r[1].date, r[1].timestamp))
+        return sorted(results, key=lambda r: (r[1].date, r[1].time, r[1].timestamp or ""))
 
     # restrict to entries whose source_file parent folder matches person_name
     def _restrict_to_person_entries(results_list, person_name):
@@ -44,7 +44,7 @@ def sort_quotes(results: List[Tuple], *, sort_mode: Optional[str], people_filter
             person_entries = _restrict_to_person_entries(results, person)
             if person_entries:
                 return sorted(person_entries, key=lambda r: r[0].line_number, reverse=True)
-        return sorted(results, key=lambda r: (r[1].date, r[1].timestamp), reverse=True)
+        return sorted(results, key=lambda r: (r[1].date, r[1].time, r[1].timestamp or ""), reverse=True)
 
     if sort_mode == "Oldest added (Can only check one!)":
         if people is not None and len(people) == 1:
@@ -52,7 +52,7 @@ def sort_quotes(results: List[Tuple], *, sort_mode: Optional[str], people_filter
             person_entries = _restrict_to_person_entries(results, person)
             if person_entries:
                 return sorted(person_entries, key=lambda r: r[0].line_number)
-        return sorted(results, key=lambda r: (r[1].date, r[1].timestamp))
+        return sorted(results, key=lambda r: (r[1].date, r[1].time, r[1].timestamp or ""))
 
     return results
 

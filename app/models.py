@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
+from typing import List, Optional
 
 @dataclass
 class QuoteSegment:
@@ -9,8 +10,11 @@ class QuoteSegment:
 @dataclass
 class Quote:
     date: str
-    timestamp: str
+    time: str
     url: str
+    timestamp: str
+    tags: List[str]
+    note: str
     segments: list[QuoteSegment]
     raw_line: str
     source_file: Path
@@ -19,17 +23,20 @@ class Quote:
 @dataclass
 class QuoteIndex:
     date: str
-    timestamp: str
+    time: str
     url: str
+    timestamp: str
+    tags: List[str]
+    note: str
     source_file: Path
     line_number: int
 
     def __hash__(self):
-        return hash((self.date, self.timestamp, self.url, self.source_file, self.line_number))
+        return hash((self.date, self.time, self.url, self.timestamp, tuple(self.tags), self.note, self.source_file, self.line_number))
 
     def __eq__(self, other):
         if not isinstance(other, QuoteIndex):
             return False
-        return (self.date, self.timestamp, self.url, self.source_file, self.line_number) == (
-            other.date, other.timestamp, other.url, other.source_file, other.line_number
+        return (self.date, self.time, self.url, self.timestamp, tuple(self.tags), self.note, self.source_file, self.line_number) == (
+            other.date, other.time, other.url, other.timestamp, tuple(other.tags), other.note, other.source_file, other.line_number
         )

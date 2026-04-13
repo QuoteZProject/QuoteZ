@@ -19,6 +19,7 @@ _ICON_THEME_CANDIDATES = {
     "group_remove": ["list-remove", "list-remove-user", "user-group-delete", "user-trash"],
     "link": ["insert-link", "emblem-symbolic-link", "link", "mail-forward"],
     "more": ["view-more", "open-menu", "overflow-menu", "view-list"],
+    "note": ["note", "document-edit", "edit", "sticky-note", "emblem-documents"],
     "remove": ["list-remove", "remove", "edit-clear", "user-trash"],
     "settings": ["settings", "configure", "emblem-system", "preferences-system"],
 }
@@ -35,6 +36,7 @@ _FALLBACK_STYLE_ICON = {
     "group_remove": QStyle.SP_ArrowDown,
     "link": QStyle.SP_DirLinkIcon,
     "more": QStyle.SP_TitleBarMenuButton,
+    "note": QStyle.SP_FileDialogDetailedView,
     "remove": QStyle.SP_DialogNoButton,
     "settings": QStyle.SP_FileDialogDetailedView,
 }
@@ -117,8 +119,13 @@ def _refresh_icons():
             if not visible:
                 continue
             icon = _resolve_icon(key, size)
-            w.setIcon(icon)
-            w.setIconSize(QSize(size, size))
+            if hasattr(w, 'setIcon'):
+                w.setIcon(icon)
+                w.setIconSize(QSize(size, size))
+            elif hasattr(w, 'setPixmap'):
+                w.setPixmap(icon.pixmap(QSize(size, size)))
+            else:
+                log.warning("Widget %r has no method to set icon", w)
         except Exception:
             log.exception("Failed refreshing icon for %r", w)
     _icon_widgets[:] = alive

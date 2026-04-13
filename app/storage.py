@@ -1,7 +1,7 @@
 from pathlib import Path
 import json
 from .parser import HEADER_RE, parse_quote_line
-from .models import QuoteIndex, Quote
+from .models import QuoteIndex, Quote, QuoteSegment
 from .settings import Settings
 from .xdg_data import get_config_file, get_data_dir, is_flatpak, get_resource_file
 
@@ -143,13 +143,13 @@ class QuoteStorage:
             if not folder.is_dir():
                 continue
 
-            qfile = folder / f"{folder.name}.quotes"
+            qfile = folder / "quotes.jsonl"
 
             # skip if missing quotes file
             if not qfile.exists():
                 continue
 
-            avatar = folder / "pfp.png"
+            avatar = folder / "avatar.png"
             self.people[folder.name] = (
                 avatar if avatar.exists() else default_avatar
             )
@@ -158,14 +158,36 @@ class QuoteStorage:
             try:
                 with qfile.open(encoding="utf-8") as f:
                     for i, line in enumerate(f):
-                        m = HEADER_RE.match(line)
-                        if not m:
+                        # Skip empty or whitespace-only lines
+                        if not line.strip():
                             continue
-
-                        date, ts, url = m.groups()
-                        self.index.append(
-                            QuoteIndex(date, ts, url, qfile, i)
-                        )
+                        
+                        try:
+                            # Parse JSONL line
+                            data = json.loads(line.strip())
+                            metadata = data.get("metadata", {})
+                            date = metadata.get("date", "")
+                            time = metadata.get("time", "")
+                            url = metadata.get("url", "")
+                            timestamp = metadata.get("timestamp", "")
+                            tags = metadata.get("tags", [])
+                            note = metadata.get("note", "")
+                            
+                            self.index.append(
+                                QuoteIndex(
+                                    date,
+                                    time,
+                                    url,
+                                    timestamp,
+                                    tags,
+                                    note,
+                                    qfile,
+                                    i
+                                )
+                            )
+                        except json.JSONDecodeError:
+                            # Skip invalid JSON lines
+                            continue
             except (FileNotFoundError, OSError):
                 # file gone skip
                 continue
@@ -182,15 +204,52 @@ class QuoteStorage:
             with idx.source_file.open(encoding="utf-8") as f:
                 for i, line in enumerate(f):
                     if i == idx.line_number:
-                        return parse_quote_line(
-                            line, idx.source_file, i
-                        )
+                        try:
+                            data = json.loads(line.strip())
+                            return self._parse_json_quote(data, idx.source_file, i)
+                        except json.JSONDecodeError:
+                            # If this line could not be parsed as JSON, fallback to legacy parser
+                            return parse_quote_line(line, idx.source_file, i)
         except (FileNotFoundError, OSError):
             # file disappeared reload index
             self.load_index()
             return None
 
         return None
+
+    def _parse_json_quote(self, data, source_file, line_no):
+        """Parses a JSON quote object into a Quote model."""
+        # Extract metadata
+        metadata = data.get("metadata", {})
+        date = metadata.get("date", "")
+        time = metadata.get("time", "")
+        url = metadata.get("url", "")
+        timestamp = metadata.get("timestamp", "")
+        tags = metadata.get("tags", [])
+        note = metadata.get("note", "")
+        
+        # Extract quotes
+        quote_data = data.get("quote", [])
+        segments = []
+        for item in quote_data:
+            speaker = item.get("speaker", None)
+            text = item.get("text", "")
+            segments.append(QuoteSegment(speaker, text))
+        
+        # Create a quote object with new fields
+        quote = Quote(
+            date=date,
+            time=time,
+            url=url,
+            timestamp=timestamp,
+            tags=tags,
+            note=note,
+            segments=segments,
+            raw_line=json.dumps(data),
+            source_file=source_file,
+            line_number=line_no
+        )
+        return quote
 
     def quote_key(self, quote: Quote) -> tuple[str, str, str, str]:
         text = "".join(seg.text for seg in quote.segments)

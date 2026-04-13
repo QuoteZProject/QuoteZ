@@ -47,7 +47,7 @@ class EditEntriesWidget(QWidget):
         )
 
         # avatar click handler (toggle set/replace/remove)
-        self.selector.avatar_click_handler = self._toggle_person_pfp
+        self.selector.avatar_click_handler = self._toggle_person_avatar
         self._update_selector_avatar_cursors()
 
         layout.addWidget(self.selector)
@@ -194,7 +194,7 @@ class EditEntriesWidget(QWidget):
             self.modifier._save_groups(data)
             self._reload()
 
-    def _toggle_person_pfp(self, person: str):
+    def _toggle_person_avatar(self, person: str):
         # toggle/set/replace/remove profile picture for person
         current = None
         try:
@@ -226,18 +226,18 @@ class EditEntriesWidget(QWidget):
             clicked = msg.clickedButton()
             if clicked == remove_btn:
                 try:
-                    self.modifier.remove_person_pfp(person)
+                    self.modifier.remove_person_avatar(person)
                 except Exception:
-                    log.exception("remove_person_pfp failed")
+                    log.exception("remove_person_avatar failed")
                 self._reload()
                 return
             elif clicked == replace_btn:
                 file_path = select_file_native(self, "Select Profile Picture", "Images (*.png *.jpg *.jpeg *.webp)")
                 if file_path:
                     try:
-                        self.modifier.set_person_pfp(person, Path(file_path))
+                        self.modifier.set_person_avatar(person, Path(file_path))
                     except Exception:
-                        log.exception("set_person_pfp failed")
+                        log.exception("set_person_avatar failed")
                     self._reload()
                 return
             else:
@@ -247,9 +247,9 @@ class EditEntriesWidget(QWidget):
         file_path = select_file_native(self, "Select Profile Picture", "Images (*.png *.jpg *.jpeg *.webp)")
         if file_path:
             try:
-                self.modifier.set_person_pfp(person, Path(file_path))
+                self.modifier.set_person_avatar(person, Path(file_path))
             except Exception:
-                log.exception("set_person_pfp failed (no custom present)")
+                log.exception("set_person_avatar failed (no custom present)")
             self._reload()
 
     def _edit_nicknames(self, person: str):
@@ -380,6 +380,6 @@ class EditEntriesWidget(QWidget):
             person_right_widget_builder=self._person_buttons
         )
 
-        self.selector.avatar_click_handler = self._toggle_person_pfp
+        self.selector.avatar_click_handler = self._toggle_person_avatar
         self._update_selector_avatar_cursors()
         layout.addWidget(self.selector)

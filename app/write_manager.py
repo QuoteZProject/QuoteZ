@@ -5,7 +5,7 @@ import re
 from typing import Optional, List
 
 from .quote_utils import find_quote_tag_names
-from .pfp_manager import PFPManager
+from .avatar_manager import avatarManager
 
 
 class QuoteModifier:
@@ -13,14 +13,52 @@ class QuoteModifier:
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
 
-        self.pfp_manager = PFPManager(self.root)
+        self.avatar_manager = avatarManager(self.root)
 
     # Quote methods
-    def _build_line(self, date: str, timestamp: str, url: str, text: str) -> str:
-        text = text.rstrip("\n")
-        return f"[{date};{timestamp};{url}]{text}\n"
+    def _build_json_line(self, date: str, time: str, url: str, timestamp: str, tags: List[str], note: str, text: str) -> str:
+        """Constructs a JSONL line for a quote"""
+        # Parse the text to extract segments
+        segments = []
+        pos = 0
+        current_speaker = None
+        tag_re = re.compile(r'\{quote:"([^"]+)"\}')
+        
+        for tag in tag_re.finditer(text):
+            # Extract any text before this tag
+            text_before = text[pos:tag.start()]
+            if text_before:
+                segments.append({"speaker": current_speaker, "text": text_before})
+            # Extract speaker
+            current_speaker = tag.group(1)
+            pos = tag.end()
+        
+        # Add remaining text after last tag
+        final_text = text[pos:]
+        if final_text:
+            segments.append({"speaker": current_speaker, "text": final_text})
+        
+        # Construct metadata
+        metadata = {
+            "date": date,
+            "time": time,
+            "url": url,
+            "timestamp": timestamp,
+            "tags": tags,
+            "note": note
+        }
 
-    def add_quote(self, date: str, timestamp: str, url: str, text: str):
+        metadata = {k: v for k, v in metadata.items() if v}
+        
+        # Construct JSON structure
+        data = {
+            "metadata": metadata,
+            "quote": segments
+        }
+        
+        return json.dumps(data, ensure_ascii=False) + "\n"
+
+    def add_quote(self, date: str, time: str, url: str, timestamp: str, tags: List[str], note: str, text: str):
         if not text.startswith('{quote:'):
             raise ValueError('Quote must start with {quote:"name"}')
 
@@ -28,47 +66,190 @@ class QuoteModifier:
         if not speakers:
             raise ValueError("No speaker tags found")
 
-        line = self._build_line(date, timestamp, url, text)
+        line = self._build_json_line(date, time, url, timestamp, tags, note, text)
 
         for speaker in speakers:
             folder = self.root / speaker
             folder.mkdir(parents=True, exist_ok=True)
-            qfile = folder / f"{speaker}.quotes"
+            qfile = folder / "quotes.jsonl"
 
             with qfile.open("a", encoding="utf-8") as f:
                 f.write(line)
 
-    def remove_quote(self, date: str, timestamp: str, url: str):
-        header = f"[{date};{timestamp};{url}]"
-
+    def find_quote_line(self, date: str, time: str, url: str, timestamp: str, tags: List[str], note: str) -> tuple[str, int] | None:
+        """Find a specific quote line in all files and return (line_content, line_number) or None"""
         for folder in self.root.iterdir():
             if not folder.is_dir():
                 continue
 
-            qfile = folder / f"{folder.name}.quotes"
+            qfile = folder / "quotes.jsonl"
             if not qfile.exists():
                 continue
 
             lines = qfile.read_text(encoding="utf-8").splitlines()
-            new_lines = [l for l in lines if not l.startswith(header)]
+            for i, line in enumerate(lines):
+                try:
+                    data = json.loads(line.strip())
+                    if "metadata" in data:
+                        metadata = data["metadata"]
+                        
+                        old_date = metadata.get("date", "")
+                        old_time = metadata.get("time", "")
+                        old_url = metadata.get("url", "")
+                        old_timestamp = metadata.get("timestamp", "")
+                        old_tags = metadata.get("tags", [])
+                        old_note = metadata.get("note", "")
+                        
+                        if (old_date == date and old_time == time and old_url == url and 
+                            old_timestamp == timestamp and old_tags == tags and old_note == note):
+                            return line, i
+                except (json.JSONDecodeError, Exception):
+                    continue
+        return None
 
-            qfile.write_text(
-                "\n".join(new_lines) + ("\n" if new_lines else ""),
-                encoding="utf-8"
-            )
+    def remove_quote(self, date: str, time: str, url: str, timestamp: str, tags: List[str], note: str):
+        # Find and remove the specific quote line
+        for folder in self.root.iterdir():
+            if not folder.is_dir():
+                continue
+
+            qfile = folder / "quotes.jsonl"
+            if not qfile.exists():
+                continue
+
+            lines = qfile.read_text(encoding="utf-8").splitlines()
+            new_lines = []
+            found_and_removed = False
+            
+            for line in lines:
+                try:
+                    data = json.loads(line.strip())
+                    if "metadata" in data:
+                        metadata = data["metadata"]
+                        
+                        old_date = metadata.get("date", "")
+                        old_time = metadata.get("time", "")
+                        old_url = metadata.get("url", "")
+                        old_timestamp = metadata.get("timestamp", "")
+                        old_tags = metadata.get("tags", [])
+                        old_note = metadata.get("note", "")
+                        
+                        if (old_date == date and old_time == time and old_url == url and 
+                            old_timestamp == timestamp and old_tags == tags and old_note == note):
+                            found_and_removed = True
+                            continue  # Skip this line (remove the quote)
+                        else:
+                            new_lines.append(line)
+                    else:
+                        new_lines.append(line)
+                except (json.JSONDecodeError, Exception):
+                    new_lines.append(line)
+
+            if found_and_removed:
+                qfile.write_text(
+                    "\n".join(new_lines) + ("\n" if new_lines else ""),
+                    encoding="utf-8"
+                )
 
     def edit_quote(
         self,
         old_date: str,
-        old_timestamp: str,
+        old_time: str,
         old_url: str,
+        old_timestamp: str,
+        old_tags: List[str],
+        old_note: str,
         new_date: str,
-        new_timestamp: str,
+        new_time: str,
         new_url: str,
+        new_timestamp: str,
+        new_tags: List[str],
+        new_note: str,
         new_text: str,
     ):
-        self.remove_quote(old_date, old_timestamp, old_url)
-        self.add_quote(new_date, new_timestamp, new_url, new_text)
+        # Find the original quote line and update it in-place
+        for folder in self.root.iterdir():
+            if not folder.is_dir():
+                continue
+
+            qfile = folder / "quotes.jsonl"
+            if not qfile.exists():
+                continue
+
+            lines = qfile.read_text(encoding="utf-8").splitlines()
+            new_lines = []
+            found_and_updated = False
+            
+            for line in lines:
+                try:
+                    data = json.loads(line.strip())
+                    if "metadata" in data:
+                        metadata = data["metadata"]
+                        
+                        old_date_check = metadata.get("date", "")
+                        old_time_check = metadata.get("time", "")
+                        old_url_check = metadata.get("url", "")
+                        old_timestamp_check = metadata.get("timestamp", "")
+                        old_tags_check = metadata.get("tags", [])
+                        old_note_check = metadata.get("note", "")
+                        
+                        # Check if this is the quote line we're looking to edit
+                        if (old_date_check == old_date and old_time_check == old_time and 
+                            old_url_check == old_url and old_timestamp_check == old_timestamp and 
+                            old_tags_check == old_tags and old_note_check == old_note):
+                            # This is the quote we want to edit - update its metadata
+                            new_metadata_raw = {
+                                "date": new_date,
+                                "time": new_time,
+                                "url": new_url,
+                                "timestamp": new_timestamp,
+                                "tags": new_tags,
+                                "note": new_note
+                            }
+
+                            # Ensures we DON'T introduce empty keys into the JSONL
+                            data["metadata"] = {k: v for k, v in new_metadata_raw.items() if v}
+                            
+                            # Update the quote segments with the new text
+                            segments = []
+                            pos = 0
+                            current_speaker = None
+                            tag_re = re.compile(r'\{quote:"([^"]+)"\}')
+                            
+                            for tag in tag_re.finditer(new_text):
+                                text_before = new_text[pos:tag.start()]
+                                if text_before:
+                                    segments.append({"speaker": current_speaker, "text": text_before})
+                                # Extract speaker
+                                current_speaker = tag.group(1)
+                                pos = tag.end()
+                            
+                            # Add remaining text after last tag
+                            final_text = new_text[pos:]
+                            if final_text:
+                                segments.append({"speaker": current_speaker, "text": final_text})
+                            
+                            data["quote"] = segments
+                            
+                            # Update the line
+                            new_lines.append(json.dumps(data, ensure_ascii=False))
+                            found_and_updated = True
+                        else:
+                            new_lines.append(line)
+                    else:
+                        new_lines.append(line)
+                except (json.JSONDecodeError, Exception):
+                    new_lines.append(line)
+            
+            if found_and_updated:
+                qfile.write_text(
+                    "\n".join(new_lines) + ("\n" if new_lines else ""),
+                    encoding="utf-8"
+                )
+                return  # We've found and updated the correct quote
+
+        # If we get here, we didn't find the quote to edit - that's an issue
+        raise ValueError("Quote not found for editing")
 
     # Person methods
     def _person_exists(self, name: str) -> bool:
@@ -81,17 +262,18 @@ class QuoteModifier:
         folder = self.root / name
         folder.mkdir(parents=True, exist_ok=False)
 
-        qfile = folder / f"{name}.quotes"
+        # Create the quotes.jsonl file
+        qfile = folder / "quotes.jsonl"
         qfile.write_text("", encoding="utf-8")
 
         if avatar_path:
-            self.pfp_manager.set_pfp(name, avatar_path)
+            self.avatar_manager.set_avatar(name, avatar_path)
 
-    def set_person_pfp(self, name: str, avatar_path: Path):
-        return self.pfp_manager.set_pfp(name, avatar_path)
+    def set_person_avatar(self, name: str, avatar_path: Path):
+        return self.avatar_manager.set_avatar(name, avatar_path)
 
-    def remove_person_pfp(self, name: str):
-        return self.pfp_manager.remove_pfp(name)
+    def remove_person_avatar(self, name: str):
+        return self.avatar_manager.remove_avatar(name)
 
     # Nickname methods
     # return nicknames for person from attributes.json or [] on error
@@ -179,7 +361,7 @@ class QuoteModifier:
             if not folder.is_dir():
                 continue
 
-            qfile = folder / f"{folder.name}.quotes"
+            qfile = folder / "quotes.jsonl"
             if not qfile.exists():
                 continue
 
@@ -217,33 +399,33 @@ class QuoteModifier:
         new_folder = self.root / new
         new_folder.mkdir(parents=True, exist_ok=False)
 
-        # update .quotes files
+        # update .jsonl files
         for folder in self.root.iterdir():
             if not folder.is_dir():
                 continue
 
-            qfile = folder / f"{folder.name}.quotes"
+            qfile = folder / "quotes.jsonl"
             if not qfile.exists():
                 continue
 
             content = qfile.read_text(encoding="utf-8")
-            if f'{{quote:"{old}"}}' in content:
+            if f'{"speaker": "{old},"}' in content:
                 content = content.replace(
-                    f'{{quote:"{old}"}}',
-                    f'{{quote:"{new}"}}'
+                    f'{"speaker": "{old},"}',
+                    f'{"speaker": "{new},"}'
                 )
                 qfile.write_text(content, encoding="utf-8")
 
         # move quotes file
-        old_file = old_folder / f"{old}.quotes"
-        new_file = new_folder / f"{new}.quotes"
+        old_file = old_folder / "quotes.jsonl"
+        new_file = new_folder / "quotes.jsonl"
 
         if old_file.exists():
             shutil.move(str(old_file), str(new_file))
 
         # move avatar
-        old_avatar = old_folder / "pfp.png"
-        new_avatar = new_folder / "pfp.png"
+        old_avatar = old_folder / "avatar.png"
+        new_avatar = new_folder / "avatar.png"
 
         if old_avatar.exists():
             shutil.move(str(old_avatar), str(new_avatar))

@@ -67,8 +67,13 @@ def format_date(iso_date: str) -> str:
 
 
 def format_time(ts: str) -> str:
-    hour, rest = ts.split(":", 1)
-    return f"{int(hour)}:{rest}"
+    if not ts:
+        return ""
+    try:
+        hour, rest = ts.split(":", 1)
+        return f"{int(hour)}:{rest}"
+    except ValueError:
+        return ts
 
 
 # icon button helper
@@ -166,9 +171,62 @@ class QuoteItem(QFrame):
             seg_layout.addWidget(copy_btn, 0, Qt.AlignTop)
             people_layout.addWidget(segment)
 
-        footer = QLabel(
-            f"Date: {format_date(quote.date)} | Link: {quote.url} | Timestamp: {format_time(quote.timestamp)}"
-        )
+        # Format the details line
+        details_parts = [
+            f"Date: {format_date(quote.date)} at {format_time(quote.time)}",
+        ]
+        
+        if quote.url:
+            details_parts.append(f"Link: {quote.url}")
+            
+        if quote.timestamp:
+            details_parts.append(f"Timestamp: {format_time(quote.timestamp)}")
+            
+        if quote.tags:
+            details_parts.append(f"Tags: {', '.join(quote.tags)}")
+
+        details = " | ".join(details_parts)
+        
+        # Add note field between quote and metadata if note exists
+        if quote.note:
+            # Create note container with icon
+            note_container = QWidget()
+            note_layout = QHBoxLayout(note_container)
+            note_layout.setContentsMargins(0, 4, 0, 0)
+            note_layout.setSpacing(4)
+            
+            # Note icon
+            note_icon = QLabel()
+            note_icon.setFixedSize(14, 14)
+            icon(note_icon, "note", 14)
+            note_icon.setStyleSheet("margin: 0px; padding: 0px;")
+            
+            # Note text
+            note_label = QLabel(quote.note)
+            note_label.setAlignment(Qt.AlignLeft)
+            note_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            note_label.setStyleSheet("""
+                QLabel {
+                    color: palette(text);
+                    font-size: 10px;
+                    margin: 0px;
+                    padding: 0px;
+                }
+            """)
+            # Set opacity to 70%
+            note_effect = QGraphicsOpacityEffect(note_label)
+            note_effect.setOpacity(0.7)
+            note_label.setGraphicsEffect(note_effect)
+            
+            note_layout.addWidget(note_icon)
+            note_layout.addWidget(note_label)
+            note_layout.addStretch(1)
+            
+            # Add note to the layout - between segments and metadata
+            people_layout.addWidget(note_container)
+            people_layout.addSpacing(4)
+        
+        footer = QLabel(details)
         footer.setAlignment(Qt.AlignLeft)
         footer.setTextInteractionFlags(Qt.TextSelectableByMouse)
         footer.setStyleSheet("""
@@ -268,7 +326,7 @@ class QuoteItem(QFrame):
             return
 
         modifier = QuoteModifier(self.storage.root)
-        modifier.remove_quote(self.quote.date, self.quote.timestamp, self.quote.url)
+        modifier.remove_quote(self.quote.date, self.quote.time, self.quote.url, self.quote.timestamp, self.quote.tags, self.quote.note)
         self.window().refresh_storage()
 
     def _on_edit(self):

@@ -51,6 +51,16 @@ def _rounded_pixmap_from_pixmap(pix: QPixmap, width: int, height: int, radius: i
 class TimeEditExtended(QLineEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setInputMask("00:00:00")
+        self.setText("00:00:00")
+
+    def to_seconds(self):
+        return parse_masked_timestamp(self.text())
+
+
+class TimestampEditExtended(QLineEdit):
+    def __init__(self, parent=None):
+        super().__init__(parent)
         self.setInputMask("000:00:00")
         self.setText("000:00:00")
 
@@ -94,13 +104,30 @@ class QuoteDialog(QDialog):
         date_row.addWidget(self.date_edit)
         layout.addLayout(date_row)
 
+        # Add time input field
+        time_row = QHBoxLayout()
+        time_label = QLabel("Time:")
+        time_label.setFixedWidth(label_width)
+        self.time_edit = TimeEditExtended()
+        self.time_edit.setFixedWidth(input_width)
+        # Initialize with current time in HH:MM:SS format for new quotes
+        if not quote:
+            from datetime import datetime
+            self.time_edit.setText(datetime.now().strftime("%H:%M:%S"))
+        else:
+            self.time_edit.setText(quote.time)
+        time_row.addWidget(time_label)
+        time_row.addStretch()
+        time_row.addWidget(self.time_edit)
+        layout.addLayout(time_row)
+
         ts_row = QHBoxLayout()
         ts_label = QLabel("Timestamp:")
         ts_label.setFixedWidth(label_width)
-        self.ts_edit = TimeEditExtended()
+        self.ts_edit = TimestampEditExtended()
         self.ts_edit.setFixedWidth(input_width)
         self.ts_edit.textEdited.connect(self._on_ts_user_edited)
-        if quote:
+        if quote and quote.timestamp:
             self.ts_edit.setText(quote.timestamp)
         self.url_ts_button = QPushButton("↺")
         self.url_ts_button.setFixedWidth(32)
@@ -117,18 +144,44 @@ class QuoteDialog(QDialog):
         self.url_edit = QLineEdit()
         self.url_edit.setPlaceholderText("https://example.com/video?t=60")
         self.url_edit.editingFinished.connect(self._auto_fill_timestamp_from_url)
-        if quote:
+        if quote and quote.url:
             self.url_edit.setText(quote.url)
         url_row.addWidget(url_label)
         url_row.addStretch()
         url_row.addWidget(self.url_edit)
         layout.addLayout(url_row)
 
+        # Add tags input field
+        tags_row = QHBoxLayout()
+        tags_label = QLabel("Tags:")
+        tags_label.setFixedWidth(label_width)
+        self.tags_edit = QLineEdit()
+        self.tags_edit.setPlaceholderText("tag1, tag2, tag3")
+        if quote:
+            self.tags_edit.setText(", ".join(quote.tags))
+        tags_row.addWidget(tags_label)
+        tags_row.addStretch()
+        tags_row.addWidget(self.tags_edit)
+        layout.addLayout(tags_row)
+
         layout.addWidget(QLabel("Quote text:"))
         self.text_edit = QTextEdit()
         self.text_edit.setPlaceholderText(":Speaker 1: Hello world")
         self.text_edit.setToolTip("Use :name: to tag speakers.")
         layout.addWidget(self.text_edit, 1)
+
+        # Add note input field
+        note_row = QHBoxLayout()
+        note_label = QLabel("Note:")
+        note_label.setFixedWidth(label_width)
+        self.note_edit = QTextEdit()
+        self.note_edit.setFixedHeight(60)
+        if quote:
+            self.note_edit.setPlainText(quote.note)
+        note_row.addWidget(note_label)
+        note_row.addStretch()
+        note_row.addWidget(self.note_edit)
+        layout.addLayout(note_row)
 
         # suggestion popup
         self.suggestion_popup = ColonSuggestionPopup(self.text_edit, self.storage)
@@ -474,28 +527,7 @@ class QuoteDialog(QDialog):
     # Submit
 
     def _on_submit(self):
-        url = self.url_edit.text().strip()
-
-        if not url:
-            QMessageBox.warning(self, "URL required", "Please enter a valid URL.")
-            return
-
-        if not is_valid_url(url):
-            QMessageBox.warning(self, "Invalid URL", "Invalid URL.")
-            return
-
-        seconds = self.ts_edit.to_seconds()
-        if seconds is None:
-            QMessageBox.warning(self, "Invalid timestamp", "Timestamp must be h:mm:ss")
-            return
-
-        timestamp_hms = seconds_to_mask_string(seconds)
-
-        extracted_seconds, _ = find_timestamp_seconds(url)
-        if extracted_seconds is None:
-            url = ensure_timestamp_in_url(url, seconds)
-
-        # use reconstructed text, not toPlainText()
+        # Use reconstructed text, not toPlainText()
         raw_text = self._get_text_with_images_as_colon_tags()
 
         # Use local find/replace
@@ -525,21 +557,48 @@ class QuoteDialog(QDialog):
             return
 
         try:
+            seconds = self.ts_edit.to_seconds()
+            if seconds is None:
+                QMessageBox.warning(self, "Invalid timestamp", "Timestamp must be h:mm:ss")
+                return
+
+            timestamp_hms = seconds_to_mask_string(seconds)
+
+            # If timestamp is all zeros, send None instead (treat as empty)
+            if timestamp_hms == "000:00:00":
+                timestamp_hms = None
+
+            # If URL was provided, ensure it has timestamp
+            url = self.url_edit.text().strip()
+            if url:
+                extracted_seconds, _ = find_timestamp_seconds(url)
+                if extracted_seconds is None:
+                    url = ensure_timestamp_in_url(url, seconds)
+
             if self.quote:
                 self.modifier.edit_quote(
                     self.quote.date,
-                    self.quote.timestamp,
+                    self.quote.time,
                     self.quote.url,
+                    self.quote.timestamp,
+                    self.quote.tags,
+                    self.quote.note,
                     self.date_edit.date().toString("yyyy-MM-dd"),
-                    timestamp_hms,
+                    self.time_edit.text(),
                     url,
+                    timestamp_hms,
+                    [tag.strip() for tag in self.tags_edit.text().split(",") if tag.strip()],
+                    self.note_edit.toPlainText(),
                     converted_text,
                 )
             else:
                 self.modifier.add_quote(
                     self.date_edit.date().toString("yyyy-MM-dd"),
-                    timestamp_hms,
+                    self.time_edit.text(),
                     url,
+                    timestamp_hms,
+                    [tag.strip() for tag in self.tags_edit.text().split(",") if tag.strip()],
+                    self.note_edit.toPlainText(),
                     converted_text,
                 )
         except Exception as e:

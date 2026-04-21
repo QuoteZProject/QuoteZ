@@ -10,7 +10,6 @@ class QuoteSegment:
 @dataclass
 class Quote:
     date: str
-    time: str
     url: str
     timestamp: str
     tags: List[str]
@@ -19,11 +18,12 @@ class Quote:
     raw_line: str
     source_file: Path
     line_number: int
+    # New field to track person tags separately
+    global_tags: List[str] = None
 
 @dataclass
 class QuoteIndex:
     date: str
-    time: str
     url: str
     timestamp: str
     tags: List[str]
@@ -32,11 +32,11 @@ class QuoteIndex:
     line_number: int
 
     def __hash__(self):
-        return hash((self.date, self.time, self.url, self.timestamp, tuple(self.tags), self.note, self.source_file, self.line_number))
+        return hash((self.date, self.url, self.timestamp, tuple(self.tags), self.note, self.source_file, self.line_number))
 
     def __eq__(self, other):
         if not isinstance(other, QuoteIndex):
             return False
-        return (self.date, self.time, self.url, self.timestamp, tuple(self.tags), self.note, self.source_file, self.line_number) == (
-            other.date, other.time, other.url, other.timestamp, tuple(other.tags), other.note, other.source_file, other.line_number
+        return (self.date, self.url, self.timestamp, tuple(self.tags), self.note, self.source_file, self.line_number) == (
+            other.date, other.url, other.timestamp, tuple(other.tags), other.note, other.source_file, other.line_number
         )

@@ -106,7 +106,7 @@ class QuoteDialog(QDialog):
 
         # Add time input field
         time_row = QHBoxLayout()
-        time_label = QLabel("Time:")
+        time_label = QLabel("Time (UTC):")
         time_label.setFixedWidth(label_width)
         self.time_edit = TimeEditExtended()
         self.time_edit.setFixedWidth(input_width)
@@ -115,7 +115,7 @@ class QuoteDialog(QDialog):
             from datetime import datetime
             self.time_edit.setText(datetime.now().strftime("%H:%M:%S"))
         else:
-            self.time_edit.setText(quote.time)
+            self.time_edit.setText(quote.date.split('T')[1])
         time_row.addWidget(time_label)
         time_row.addStretch()
         time_row.addWidget(self.time_edit)
@@ -578,13 +578,11 @@ class QuoteDialog(QDialog):
             if self.quote:
                 self.modifier.edit_quote(
                     self.quote.date,
-                    self.quote.time,
                     self.quote.url,
                     self.quote.timestamp,
                     self.quote.tags,
                     self.quote.note,
-                    self.date_edit.date().toString("yyyy-MM-dd"),
-                    self.time_edit.text(),
+                    self.date_edit.date().toString("yyyy-MM-dd") + "T" + self.time_edit.text() + "Z",
                     url,
                     timestamp_hms,
                     [tag.strip() for tag in self.tags_edit.text().split(",") if tag.strip()],
@@ -593,8 +591,7 @@ class QuoteDialog(QDialog):
                 )
             else:
                 self.modifier.add_quote(
-                    self.date_edit.date().toString("yyyy-MM-dd"),
-                    self.time_edit.text(),
+                    self.date_edit.date().toString("yyyy-MM-dd") + "T" + self.time_edit.text() + "Z",
                     url,
                     timestamp_hms,
                     [tag.strip() for tag in self.tags_edit.text().split(",") if tag.strip()],

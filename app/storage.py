@@ -4,6 +4,8 @@ from .parser import HEADER_RE, parse_quote_line
 from .models import QuoteIndex, Quote, QuoteSegment
 from .settings import Settings
 from .xdg_data import get_config_file, get_data_dir, is_flatpak, get_resource_file
+from .quote_utils import find_quote_tag_names
+from .write_manager import QuoteModifier
 
 _package_root = Path(__file__).resolve().parent.parent
 default_avatar = get_resource_file("default.png", package_root=_package_root)
@@ -83,6 +85,8 @@ class QuoteStorage:
         self.base_path = self.root
         self.index: list[QuoteIndex] = []
         self.people: dict[str, Path] = {}
+        # Registry for tracking all quotes by speaker for synchronization
+        self.all_quotes_by_speaker: dict[str, set[str]] = {}
 
     # reload settings and rebuild index
     def load_index(self):
@@ -139,6 +143,8 @@ class QuoteStorage:
             return
 
         # scan filesystem for quotes
+        # First, collect all quotes by speaker in a global registry
+        self.all_quotes_by_speaker.clear()
         for folder in self.root.iterdir():
             if not folder.is_dir():
                 continue
@@ -167,16 +173,27 @@ class QuoteStorage:
                             data = json.loads(line.strip())
                             metadata = data.get("metadata", {})
                             date = metadata.get("date", "")
-                            time = metadata.get("time", "")
                             url = metadata.get("url", "")
                             timestamp = metadata.get("timestamp", "")
                             tags = metadata.get("tags", [])
                             note = metadata.get("note", "")
                             
+                            # Extract speakers from the quote segments
+                            speakers = set()
+                            quote_data = data.get("quote", [])
+                            for quote_segment in quote_data:
+                                speaker = quote_segment.get("speaker")
+                                if speaker:
+                                    speakers.add(speaker)
+                            
+                            # Add to global registry
+                            raw_line = line.strip()
+                            for speaker in speakers:
+                                self.all_quotes_by_speaker.setdefault(speaker, set()).add(raw_line)
+                            
                             self.index.append(
                                 QuoteIndex(
                                     date,
-                                    time,
                                     url,
                                     timestamp,
                                     tags,
@@ -186,11 +203,15 @@ class QuoteStorage:
                                 )
                             )
                         except json.JSONDecodeError:
-                            # Skip invalid JSON lines
-                            continue
+                            raise ValueError("Error decoding JSON")
             except (FileNotFoundError, OSError):
                 # file gone skip
                 continue
+        
+        # Second phase: Synchronize speaker files
+        # Ensure every speaker in the registry has their own file with all quotes
+        modifier = QuoteModifier(self.root)
+        modifier._synchronize_speakers(self.all_quotes_by_speaker)
 
     # load single quote
     def load_quote(self, idx: QuoteIndex):
@@ -222,7 +243,6 @@ class QuoteStorage:
         # Extract metadata
         metadata = data.get("metadata", {})
         date = metadata.get("date", "")
-        time = metadata.get("time", "")
         url = metadata.get("url", "")
         timestamp = metadata.get("timestamp", "")
         tags = metadata.get("tags", [])
@@ -231,15 +251,32 @@ class QuoteStorage:
         # Extract quotes
         quote_data = data.get("quote", [])
         segments = []
+        speakers = set()
         for item in quote_data:
             speaker = item.get("speaker", None)
             text = item.get("text", "")
             segments.append(QuoteSegment(speaker, text))
+            if speaker:
+                speakers.add(speaker)
+        
+        # Prepare to collect person tags
+        global_tags = []
+        for speaker in speakers:
+            # Check for person tags
+            person_folder = self.root / speaker
+            attr_file = person_folder / "attributes.json"
+            try:
+                if attr_file.exists():
+                    with attr_file.open("r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    global_tags.extend(data.get("tags", []) or [])
+            except Exception:
+                # Skip if attributes can't be loaded
+                pass
         
         # Create a quote object with new fields
         quote = Quote(
             date=date,
-            time=time,
             url=url,
             timestamp=timestamp,
             tags=tags,
@@ -247,7 +284,8 @@ class QuoteStorage:
             segments=segments,
             raw_line=json.dumps(data),
             source_file=source_file,
-            line_number=line_no
+            line_number=line_no,
+            global_tags=global_tags
         )
         return quote
 
@@ -301,3 +339,29 @@ class QuoteStorage:
                 groups.setdefault(g, []).append(folder.name)
 
         return groups
+
+    # attributes
+    def _get_attributes(self, person: str) -> dict:
+        attr_file = self.root / person / "attributes.json"
+        try:
+            if attr_file.exists():
+                return json.loads(attr_file.read_text(encoding="utf-8"))
+            return {}
+        except Exception:
+            try:
+                log.exception("Failed to read attributes.json for %s", person)
+            except Exception:
+                pass
+            return {}
+
+    def get_nicknames(self, person: str) -> List[str]:
+        data = self._get_attributes(person)
+        return [str(n) for n in data.get("nicknames", []) if n is not None]
+
+    def get_tags(self, person: str) -> List[str]:
+        data = self._get_attributes(person)
+        return [str(t) for t in data.get("tags", []) if t is not None]
+
+    def get_dont_copy(self, person: str) -> bool:
+        data = self._get_attributes(person)
+        return data.get("dont_copy", False)

@@ -3,6 +3,7 @@ import json
 import shutil
 import re
 from typing import Optional, List
+from collections import OrderedDict
 
 from .quote_utils import find_quote_tag_names
 from .avatar_manager import avatarManager
@@ -16,8 +17,37 @@ class QuoteModifier:
         self.avatar_manager = avatarManager(self.root)
 
     # Quote methods
-    def _build_json_line(self, date: str, time: str, url: str, timestamp: str, tags: List[str], note: str, text: str) -> str:
-        """Constructs a JSONL line for a quote"""
+    def write_quote(self, metadata: Dict[str, any], quote: List[Dict[str, str]]) -> None:
+
+        metadata = {k: v for k, v in metadata.items() if v is not None and v != ""}
+        data = {"metadata": metadata,"quote": quote}
+        line = json.dumps(data, ensure_ascii=False) + "\n"
+        
+        # Write to each speaker's file
+        speakers = set()
+        for segment in quote:
+            speaker = segment.get('speaker')
+            text = segment.get('text')
+            if not speaker:
+                raise ValueError(f"Quote segment missing speaker: {segment}")
+            if not text:
+                raise ValueError(f"Quote segment missing text: {segment}")
+
+            speakers.add(speaker)
+        
+        # Write to each speaker's file
+        for speaker in speakers:
+            folder = self.root / speaker
+            folder.mkdir(parents=True, exist_ok=True)
+            qfile = folder / "quotes.jsonl"
+            
+            with qfile.open("a", encoding="utf-8") as f:
+                f.write(line)
+
+    def add_quote(self, date: str, url: str, timestamp: str, tags: List[str], note: str, text: str):
+        if not text.startswith('{quote:'):
+            raise ValueError('Quote must start with {quote:"name"}')
+        
         # Parse the text to extract segments
         segments = []
         pos = 0
@@ -29,6 +59,7 @@ class QuoteModifier:
             text_before = text[pos:tag.start()]
             if text_before:
                 segments.append({"speaker": current_speaker, "text": text_before})
+            
             # Extract speaker
             current_speaker = tag.group(1)
             pos = tag.end()
@@ -38,45 +69,18 @@ class QuoteModifier:
         if final_text:
             segments.append({"speaker": current_speaker, "text": final_text})
         
-        # Construct metadata
+        # Construct metadata (tags are for user organization, not speakers)
         metadata = {
             "date": date,
-            "time": time,
             "url": url,
             "timestamp": timestamp,
             "tags": tags,
             "note": note
         }
-
-        metadata = {k: v for k, v in metadata.items() if v}
         
-        # Construct JSON structure
-        data = {
-            "metadata": metadata,
-            "quote": segments
-        }
-        
-        return json.dumps(data, ensure_ascii=False) + "\n"
+        self.write_quote(metadata, segments)
 
-    def add_quote(self, date: str, time: str, url: str, timestamp: str, tags: List[str], note: str, text: str):
-        if not text.startswith('{quote:'):
-            raise ValueError('Quote must start with {quote:"name"}')
-
-        speakers = set(find_quote_tag_names(text))
-        if not speakers:
-            raise ValueError("No speaker tags found")
-
-        line = self._build_json_line(date, time, url, timestamp, tags, note, text)
-
-        for speaker in speakers:
-            folder = self.root / speaker
-            folder.mkdir(parents=True, exist_ok=True)
-            qfile = folder / "quotes.jsonl"
-
-            with qfile.open("a", encoding="utf-8") as f:
-                f.write(line)
-
-    def find_quote_line(self, date: str, time: str, url: str, timestamp: str, tags: List[str], note: str) -> tuple[str, int] | None:
+    def find_quote_line(self, date: str, url: str, timestamp: str, tags: List[str], note: str) -> tuple[str, int] | None:
         """Find a specific quote line in all files and return (line_content, line_number) or None"""
         for folder in self.root.iterdir():
             if not folder.is_dir():
@@ -94,20 +98,18 @@ class QuoteModifier:
                         metadata = data["metadata"]
                         
                         old_date = metadata.get("date", "")
-                        old_time = metadata.get("time", "")
                         old_url = metadata.get("url", "")
                         old_timestamp = metadata.get("timestamp", "")
                         old_tags = metadata.get("tags", [])
                         old_note = metadata.get("note", "")
                         
-                        if (old_date == date and old_time == time and old_url == url and 
-                            old_timestamp == timestamp and old_tags == tags and old_note == note):
+                        if (old_date == date and old_url == url and old_timestamp == timestamp and old_tags == tags and old_note == note):
                             return line, i
                 except (json.JSONDecodeError, Exception):
                     continue
         return None
 
-    def remove_quote(self, date: str, time: str, url: str, timestamp: str, tags: List[str], note: str):
+    def remove_quote(self, date: str, url: str, timestamp: str, tags: List[str], note: str):
         # Find and remove the specific quote line
         for folder in self.root.iterdir():
             if not folder.is_dir():
@@ -128,14 +130,12 @@ class QuoteModifier:
                         metadata = data["metadata"]
                         
                         old_date = metadata.get("date", "")
-                        old_time = metadata.get("time", "")
                         old_url = metadata.get("url", "")
                         old_timestamp = metadata.get("timestamp", "")
                         old_tags = metadata.get("tags", [])
                         old_note = metadata.get("note", "")
                         
-                        if (old_date == date and old_time == time and old_url == url and 
-                            old_timestamp == timestamp and old_tags == tags and old_note == note):
+                        if (old_date == date and old_url == url and old_timestamp == timestamp and old_tags == tags and old_note == note):
                             found_and_removed = True
                             continue  # Skip this line (remove the quote)
                         else:
@@ -154,13 +154,11 @@ class QuoteModifier:
     def edit_quote(
         self,
         old_date: str,
-        old_time: str,
         old_url: str,
         old_timestamp: str,
         old_tags: List[str],
         old_note: str,
         new_date: str,
-        new_time: str,
         new_url: str,
         new_timestamp: str,
         new_tags: List[str],
@@ -187,20 +185,16 @@ class QuoteModifier:
                         metadata = data["metadata"]
                         
                         old_date_check = metadata.get("date", "")
-                        old_time_check = metadata.get("time", "")
                         old_url_check = metadata.get("url", "")
                         old_timestamp_check = metadata.get("timestamp", "")
                         old_tags_check = metadata.get("tags", [])
                         old_note_check = metadata.get("note", "")
                         
                         # Check if this is the quote line we're looking to edit
-                        if (old_date_check == old_date and old_time_check == old_time and 
-                            old_url_check == old_url and old_timestamp_check == old_timestamp and 
-                            old_tags_check == old_tags and old_note_check == old_note):
+                        if (old_date_check == old_date and old_url_check == old_url and old_timestamp_check == old_timestamp and old_tags_check == old_tags and old_note_check == old_note):
                             # This is the quote we want to edit - update its metadata
                             new_metadata_raw = {
                                 "date": new_date,
-                                "time": new_time,
                                 "url": new_url,
                                 "timestamp": new_timestamp,
                                 "tags": new_tags,
@@ -275,82 +269,91 @@ class QuoteModifier:
     def remove_person_avatar(self, name: str):
         return self.avatar_manager.remove_avatar(name)
 
-    # Nickname methods
-    # return nicknames for person from attributes.json or [] on error
-    def get_nicknames(self, person: str) -> List[str]:
-        attr_file = self.root / person / "attributes.json"
-        try:
-            if attr_file.exists():
-                data = json.loads(attr_file.read_text(encoding="utf-8"))
-            else:
-                data = {}
-        except Exception:
-            # best-effort: if file is corrupt/unreadable, return empty
-            try:
-                log.exception("Failed to read attributes.json for %s", person)
-            except Exception:
-                pass
-            data = {}
-        nicks = data.get("nicknames", []) or []
-        return [str(n) for n in nicks if n is not None]
-
     # overwrite nicknames in attributes.json, preserve other keys
     def set_nicknames(self, person: str, nicknames: List[str]):
+        self._update_attributes(person, "nicknames", nicknames)
+
+    # overwrite tags in attributes.json, preserve other keys
+    def set_tags(self, person: str, tags: List[str]):
+        self._update_attributes(person, "tags", tags)
+
+    def set_dont_copy(self, person: str, dont_copy: bool):
+        self._update_attributes(person, "dont_copy", dont_copy)
+
+    def _update_attributes(self, person: str, key: str, value: any):
         attr_file = self.root / person / "attributes.json"
         try:
             existing = json.loads(attr_file.read_text(encoding="utf-8")) if attr_file.exists() else {}
         except Exception:
-            try:
-                log.exception("Failed to parse attributes.json for %s", person)
-            except Exception:
-                pass
+            log.exception("Failed to parse attributes.json for %s", person)
             existing = {}
 
-        # sanitize: strip, drop empty, unique preserving order
-        cleaned: List[str] = []
-        seen = set()
-        for n in (nicknames or []):
-            s = (n or "").strip()
-            if not s:
-                continue
-            if s in seen:
-                continue
-            seen.add(s)
-            cleaned.append(s)
+        # Logic for Boolean keys
+        if key == "dont_copy":
+            if value is True:
+                existing[key] = True
+            else:
+                # If False, remove it from the dictionary entirely
+                existing.pop(key, None)
+        
+        # Logic for List keys
+        else:
+            cleaned: List[str] = []
+            seen = set()
+            for n in (value or []):
+                s = (n or "").strip()
+                if not s or s in seen:
+                    continue
+                seen.append(s)
+                cleaned.append(s)
+            existing[key] = cleaned
 
-        existing["nicknames"] = cleaned
+        ordered_data = {}
+        
+        # List of keys to attempt to preserve in order
+        keys_to_preserve = ['dont_copy', 'groups', 'nicknames', 'tags']
+        
+        for k in keys_to_preserve:
+            if k in existing:
+                val = existing[k]
+                if val is not False and val != [] and val != "":
+                    ordered_data[k] = val
 
-        try:
-            attr_file.write_text(json.dumps(existing, indent=4, ensure_ascii=False), encoding="utf-8")
-        except Exception:
+        # If no data remains, delete the file entirely
+        if not ordered_data:
             try:
-                log.exception("Failed to write attributes.json for %s", person)
+                if attr_file.exists():
+                    attr_file.unlink()
             except Exception:
-                pass
-            raise
+                log.exception("Failed to delete empty attributes.json for %s", person)
+        else:
+            try:
+                attr_file.write_text(json.dumps(ordered_data, indent=4, ensure_ascii=False), encoding="utf-8")
+            except Exception:
+                log.exception("Failed to write attributes.json for %s", person)
+                raise
 
-    # remove speaker {quote:"name"} segments including their text
-    def _remove_speaker_from_line(self, line: str, speaker: str) -> str:
-        pattern = r'(\{quote:"([^"]+)"\})'
-        parts = re.split(pattern, line)
-
-        if len(parts) <= 1:
+    # Remove all references to a speaker from a JSONL line.
+    def _remove_speaker_from_line(self, line: str, name: str) -> str:
+        try:
+            data = json.loads(line)
+            # If this is a quote entry, remove any speaker references
+            if 'quote' in data:
+                new_quote = []
+                for speaker_entry in data['quote']:
+                    # Only keep entries that don't have the removed speaker
+                    if speaker_entry.get('speaker') != name:
+                        new_quote.append(speaker_entry)
+                # Update the quote list, removing the person
+                if new_quote:
+                    data['quote'] = new_quote
+                else:
+                    # If no speakers left, remove the entire quote entry
+                    return ""
+            return json.dumps(data, ensure_ascii=False)
+        except (json.JSONDecodeError, Exception):
+            # If we can't parse the JSON, return the original line
             return line
-
-        rebuilt = parts[0]
-        i = 1
-
-        while i < len(parts):
-            full_tag = parts[i]
-            name = parts[i + 1]
-            text_after = parts[i + 2]
-
-            if name != speaker:
-                rebuilt += full_tag + text_after
-
-            i += 3
-
-        return rebuilt
 
     def remove_person(self, name: str):
         if not self._person_exists(name):
@@ -371,8 +374,8 @@ class QuoteModifier:
             for line in lines:
                 updated = self._remove_speaker_from_line(line, name)
 
-                # Keep line only if it still contains quotes
-                if '{quote:' in updated:
+                # Keep line only if it still contains quote data
+                if updated.strip():  # Only keep non-empty lines
                     new_lines.append(updated)
 
             qfile.write_text(
@@ -444,7 +447,137 @@ class QuoteModifier:
             log.exception("old_folder.rmdir() failed")
             raise
 
+    def remove_tag(self, tag_to_remove: str):
+        """Remove a tag from all quote files, and remove the tags key if it becomes empty"""
+        for folder in self.root.iterdir():
+            if not folder.is_dir():
+                continue
+                
+            qfile = folder / "quotes.jsonl"
+            if not qfile.exists():
+                continue
+                
+            lines = qfile.read_text(encoding="utf-8").splitlines()
+            new_lines = []
+            modified = False
+            
+            for line in lines:
+                try:
+                    data = json.loads(line.strip())
+                    if "metadata" in data:
+                        metadata = data["metadata"]
+                        tags = metadata.get("tags", [])
+                        
+                        # Remove the tag if it exists
+                        if tag_to_remove in tags:
+                            tags.remove(tag_to_remove)
+                            modified = True
+                            
+                            # Update the metadata with cleaned tags
+                            metadata["tags"] = tags
+                            
+                            # Remove tags key if empty
+                            if not tags:
+                                metadata.pop("tags", None)
+                                
+                            # Update the line
+                            new_lines.append(json.dumps(data, ensure_ascii=False))
+                        else:
+                            new_lines.append(line)
+                    else:
+                        new_lines.append(line)
+                except (json.JSONDecodeError, Exception):
+                    new_lines.append(line)
+            
+            # Only rewrite file if changes were made
+            if modified:
+                qfile.write_text(
+                    "\n".join(new_lines) + ("\n" if new_lines else ""),
+                    encoding="utf-8"
+                )
+
+    def rename_tag(self, old_tag: str, new_tag: str):
+        """Rename a tag in all quote files, and remove the tags key if it becomes empty"""
+        for folder in self.root.iterdir():
+            if not folder.is_dir():
+                continue
+                
+            qfile = folder / "quotes.jsonl"
+            if not qfile.exists():
+                continue
+                
+            lines = qfile.read_text(encoding="utf-8").splitlines()
+            new_lines = []
+            modified = False
+            
+            for line in lines:
+                try:
+                    data = json.loads(line.strip())
+                    if "metadata" in data:
+                        metadata = data["metadata"]
+                        tags = metadata.get("tags", [])
+                        
+                        # Rename the tag if it exists
+                        if old_tag in tags:
+                            # Replace old tag with new tag
+                            tags = [new_tag if tag == old_tag else tag for tag in tags]
+                            modified = True
+                            
+                            # Update the metadata with cleaned tags
+                            metadata["tags"] = tags
+                            
+                            # Remove tags key if empty
+                            if not tags:
+                                metadata.pop("tags", None)
+                                
+                            # Update the line
+                            new_lines.append(json.dumps(data, ensure_ascii=False))
+                        else:
+                            new_lines.append(line)
+                    else:
+                        new_lines.append(line)
+                except (json.JSONDecodeError, Exception):
+                    new_lines.append(line)
+            
+            # Only rewrite file if changes were made
+            if modified:
+                qfile.write_text(
+                    "\n".join(new_lines) + ("\n" if new_lines else ""),
+                    encoding="utf-8"
+                )
+
+    def _synchronize_speakers(self, all_quotes_by_speaker: dict[str, set[str]]):
+        # Avoid self-reference by making a local copy
+        speaker_quotes = all_quotes_by_speaker.copy()
+        all_quotes_by_speaker.clear()  # Clear for next run
+        
+        for speaker_name, quote_lines in speaker_quotes.items():
+            # Target directory for this speaker
+            speaker_dir = self.root / speaker_name
+            speaker_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Target file
+            speaker_file = speaker_dir / "quotes.jsonl"
+            
+            # Load existing content to avoid duplicates
+            existing_lines = set()
+            if speaker_file.exists():
+                with speaker_file.open("r", encoding="utf-8") as f:
+                    for line in f:
+                        existing_lines.add(line.strip())
+            
+            # Find quotes that are NOT already in this speaker's file
+            missing_quotes = quote_lines - existing_lines
+            
+            # Only write missing quotes (append them)
+            if missing_quotes:
+                with speaker_file.open("a", encoding="utf-8") as f:
+                    for line in missing_quotes:
+                        if line:  # Only write non-empty lines
+                            f.write(line + "\n")
+
     # Group methods
+
     # build map group -> [members] by scanning attributes.json
     def _load_groups(self) -> dict:
         groups: dict[str, list[str]] = {}
@@ -482,34 +615,14 @@ class QuoteModifier:
         for m, gl in person_to_groups.items():
             person_to_groups[m] = sorted(gl)
 
-        # Update each person's attributes.json
+        # Update each person's attributes.json by redirecting to _update_attributes
         for folder in self.root.iterdir():
             if not folder.is_dir():
                 continue
 
             name = folder.name
-            attr_file = folder / "attributes.json"
-
-            try:
-                existing = json.loads(attr_file.read_text(encoding="utf-8")) if attr_file.exists() else {}
-            except Exception:
-                existing = {}
-
-            # Set groups for this person (empty list if none)
-            existing['groups'] = person_to_groups.get(name, [])
-
-            # Ensure nicknames key remains present if it was present (preserve content)
-            if 'nicknames' not in existing:
-                existing['nicknames'] = existing.get('nicknames', [])
-
-            try:
-                attr_file.write_text(
-                    json.dumps(existing, indent=4, ensure_ascii=False),
-                    encoding="utf-8"
-                )
-            except Exception:
-                # Best-effort: skip writing failures silently
-                log.exception("Failed to write attributes.json for %s", name)
+            # For each person, update their groups attribute specifically
+            self._update_attributes(name, "groups", person_to_groups.get(name, []))
 
     def add_group(self, name: str, members: Optional[List[str]] = None):
         data = self._load_groups()
@@ -546,3 +659,33 @@ class QuoteModifier:
         # Move member list to new name
         data[new] = data.pop(old)
         self._save_groups(data)
+
+    # Distructive Functions
+
+    def sort_quotes(self):
+        for folder in self.root.iterdir():
+            if not folder.is_dir():
+                continue
+                
+            qfile = folder / "quotes.jsonl"
+            if not qfile.exists():
+                continue
+                
+            try:
+                with qfile.open("r", encoding="utf-8") as f:
+                    lines = [line.strip() for line in f if line.strip()]
+                sorted_lines = sorted(lines)
+                
+                with qfile.open("w", encoding="utf-8") as f:
+                    for line in sorted_lines:
+                        if line:  # Only write non-empty lines
+                            f.write(line + "\n")
+                            
+            except Exception as e:
+                print(f"Error sorting quotes for {folder.name}: {e}")
+                continue
+
+    def remove_all_quotes(self):
+        for folder in self.root.iterdir():
+            if folder.is_dir():
+                shutil.rmtree(folder)

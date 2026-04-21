@@ -8,8 +8,11 @@ except Exception:
     from search_keyword import build_keyword_node  # type: ignore
 
 # join quote segments
-def quote_full_text(quote) -> str:
-    return "".join(seg.text for seg in quote.segments)
+def quote_full_text(quote, search_notes=False) -> str:
+    text = "".join(seg.text for seg in quote.segments)
+    if search_notes and hasattr(quote, 'note') and quote.note:
+        text = text + " " + quote.note
+    return text
 
 
 # sort results according to sort_mode; people_filter used for added-order sorts
@@ -25,13 +28,13 @@ def sort_quotes(results: List[Tuple], *, sort_mode: Optional[str], people_filter
 
     # Default: newest quote if no explicit sort
     if not sort_mode:
-        return sorted(results, key=lambda r: (r[1].date, r[1].time, r[1].timestamp or ""), reverse=True)
+        return sorted(results, key=lambda r: (r[1].date, r[1].timestamp or ""), reverse=True)
 
     if sort_mode == "Newest quote":
-        return sorted(results, key=lambda r: (r[1].date, r[1].time, r[1].timestamp or ""), reverse=True)
+        return sorted(results, key=lambda r: (r[1].date, r[1].timestamp or ""), reverse=True)
 
     if sort_mode == "Oldest quote":
-        return sorted(results, key=lambda r: (r[1].date, r[1].time, r[1].timestamp or ""))
+        return sorted(results, key=lambda r: (r[1].date, r[1].timestamp or ""))
 
     # restrict to entries whose source_file parent folder matches person_name
     def _restrict_to_person_entries(results_list, person_name):
@@ -44,7 +47,7 @@ def sort_quotes(results: List[Tuple], *, sort_mode: Optional[str], people_filter
             person_entries = _restrict_to_person_entries(results, person)
             if person_entries:
                 return sorted(person_entries, key=lambda r: r[0].line_number, reverse=True)
-        return sorted(results, key=lambda r: (r[1].date, r[1].time, r[1].timestamp or ""), reverse=True)
+        return sorted(results, key=lambda r: (r[1].date, r[1].timestamp or ""), reverse=True)
 
     if sort_mode == "Oldest added (Can only check one!)":
         if people is not None and len(people) == 1:
@@ -52,7 +55,7 @@ def sort_quotes(results: List[Tuple], *, sort_mode: Optional[str], people_filter
             person_entries = _restrict_to_person_entries(results, person)
             if person_entries:
                 return sorted(person_entries, key=lambda r: r[0].line_number)
-        return sorted(results, key=lambda r: (r[1].date, r[1].time, r[1].timestamp or ""))
+        return sorted(results, key=lambda r: (r[1].date, r[1].timestamp or ""))
 
     return results
 
@@ -73,6 +76,8 @@ def search_quotes(storage, query: str, *, filters: Optional[dict] = None) -> Lis
     char_from = filters.get("char_from")
     char_to = filters.get("char_to")
     people = filters.get("people")
+    tags = filters.get("tags")
+    search_notes = filters.get("search_notes", False)
     sort_mode = filters.get("sort")
 
     # build keyword AST from filters (keywords)
@@ -89,8 +94,7 @@ def search_quotes(storage, query: str, *, filters: Optional[dict] = None) -> Lis
         if not quote:
             continue
 
-        full_text = quote_full_text(quote)
-
+        full_text = quote_full_text(quote, search_notes)
         # main search
         if not matches_main_search(full_text, query):
             continue
@@ -115,6 +119,19 @@ def search_quotes(storage, query: str, *, filters: Optional[dict] = None) -> Lis
             speakers = {seg.speaker for seg in quote.segments if seg.speaker}
             people_set = set(people)
             if not (speakers & people_set):
+                continue
+
+        # tags filter
+        if tags is not None:
+            # Get both local tags and global tags
+            quote_tags = set(quote.tags) if hasattr(quote, 'tags') else set()
+            # Include global_tags if they exist
+            if hasattr(quote, 'global_tags') and quote.global_tags:
+                quote_tags.update(quote.global_tags)
+            tags_set = set(tags)
+            # If quote has no tags, show it (unless we want to filter out quotes without tags)
+            # If quote has tags, only show it if it matches at least one of selected tags
+            if quote_tags and not (quote_tags & tags_set):
                 continue
 
         # length filter

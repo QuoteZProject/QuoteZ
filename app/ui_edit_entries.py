@@ -11,6 +11,7 @@ import re
 
 from .ui_selector import PersonGroupSelector, DEFAULT_AVATAR
 from .write_manager import QuoteModifier
+from .storage import QuoteStorage
 from .icons import icon
 from .file_dialogs import select_file_native
 
@@ -23,6 +24,7 @@ class EditEntriesWidget(QWidget):
 
         self.storage = storage
         self.modifier = QuoteModifier(self.storage.root)
+        self.data_storage = QuoteStorage()
 
         try:
             self.storage.load_index()
@@ -42,8 +44,10 @@ class EditEntriesWidget(QWidget):
         self.selector = PersonGroupSelector(
             self.storage,
             show_checkboxes=False,
+            show_global_tags=False,
             group_right_widget_builder=self._group_buttons,
-            person_right_widget_builder=self._person_buttons
+            person_right_widget_builder=self._person_buttons,
+            tag_right_widget_builder=self._tag_buttons
         )
 
         # avatar click handler (toggle set/replace/remove)
@@ -92,6 +96,7 @@ class EditEntriesWidget(QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(4)
 
+        #Goupe remove
         if group:
             remove_from_group_btn = QPushButton()
             icon(remove_from_group_btn, "group_remove", 14)
@@ -100,6 +105,7 @@ class EditEntriesWidget(QWidget):
             remove_from_group_btn.clicked.connect(lambda: self.remove_from_group(group, person))
             lay.addWidget(remove_from_group_btn)
 
+        #Group add
         add_to_group_btn = QPushButton()
         icon(add_to_group_btn, "group_add", 14)
         add_to_group_btn.setFixedSize(QSize(20, 20))
@@ -107,6 +113,7 @@ class EditEntriesWidget(QWidget):
         add_to_group_btn.clicked.connect(lambda: self.add_to_group(person))
         lay.addWidget(add_to_group_btn)
 
+        #Edit
         edit_btn = QPushButton()
         icon(edit_btn, "edit", 14)
         edit_btn.setFixedSize(QSize(20, 20))
@@ -114,6 +121,31 @@ class EditEntriesWidget(QWidget):
         edit_btn.clicked.connect(lambda: self._open_person_menu(edit_btn, person))
         lay.addWidget(edit_btn)
 
+        #Tag
+        tags_btn = QPushButton()
+        icon(tags_btn, "tag", 14)
+        tags_btn.setFixedSize(QSize(20, 20))
+        tags_btn.setCursor(Qt.PointingHandCursor)
+        tags_btn.clicked.connect(lambda: self._edit_tags(person))
+        lay.addWidget(tags_btn)
+
+        #Don't copy
+        is_dont_copy = self.data_storage.get_dont_copy(person)
+        dont_copy_btn = QPushButton()
+        
+        icon_name = "copy_disabled" if is_dont_copy else "copy_enabled"
+        icon(dont_copy_btn, icon_name, 14)
+        
+        dont_copy_btn.setFixedSize(QSize(20, 20))
+        dont_copy_btn.setCursor(Qt.PointingHandCursor)
+        
+        dont_copy_btn.setCheckable(True)
+        dont_copy_btn.setChecked(is_dont_copy)
+        
+        dont_copy_btn.clicked.connect(lambda: self._toggle_dont_copy(person))
+        lay.addWidget(dont_copy_btn)
+
+        #Delete
         delete_btn = QPushButton()
         icon(delete_btn, "delete", 14)
         delete_btn.setFixedSize(QSize(20, 20))
@@ -123,17 +155,56 @@ class EditEntriesWidget(QWidget):
 
         return container
 
+    def _toggle_dont_copy(self, person: str):
+        # Get current state
+        current_state = self.data_storage.get_dont_copy(person)
+        # Toggle the state
+        self.modifier.set_dont_copy(person, not current_state)
+        # Reload UI to reflect the change
+        self._reload()
+
+    def _tag_buttons(self, tag):
+        container = QWidget()
+        lay = QHBoxLayout(container)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(4)
+
+        # Edit Button
+        edit_btn = QPushButton()
+        icon(edit_btn, "edit", 14)
+        edit_btn.setFixedSize(QSize(20, 20))
+        edit_btn.setCursor(Qt.PointingHandCursor)
+        edit_btn.clicked.connect(lambda: self.rename_tag(tag))
+
+        # Delete Button
+        delete_btn = QPushButton()
+        icon(delete_btn, "delete", 14)
+        delete_btn.setFixedSize(QSize(20, 20))
+        delete_btn.setCursor(Qt.PointingHandCursor)
+        delete_btn.clicked.connect(lambda: self.remove_tag(tag))
+
+        lay.addWidget(edit_btn)
+        lay.addWidget(delete_btn)
+        return container
+
     def _open_person_menu(self, btn, person: str):
         menu = QMenu(self)
 
         rename_action = menu.addAction("Rename")
         nick_action = menu.addAction("Edit nicknames")
+        dont_copy_action = menu.addAction("Don't Copy")
+
+        # Set the check state of the "Don't Copy" action based on current setting
+        dont_copy_action.setCheckable(True)
+        dont_copy_action.setChecked(self.data_storage.get_dont_copy(person))
 
         chosen = menu.exec(btn.mapToGlobal(btn.rect().bottomLeft()))
         if chosen == rename_action:
             self.rename_person(person)
         elif chosen == nick_action:
             self._edit_nicknames(person)
+        elif chosen == dont_copy_action:
+            self._toggle_dont_copy(person)
 
     def add_person(self):
         name, ok = QInputDialog.getText(self, "Add Person", "Name:")
@@ -193,6 +264,18 @@ class EditEntriesWidget(QWidget):
             data.setdefault(group, []).append(person)
             self.modifier._save_groups(data)
             self._reload()
+
+    def rename_tag(self, tag):
+        new_name, ok = QInputDialog.getText(self, "Rename Tag", "New name:", text=tag)
+        if ok and new_name and new_name != tag:
+            self.modifier.rename_tag(tag, new_name)
+            self._reload()
+
+    def remove_tag(self, tag):
+        if not self._confirm("Delete Tag", f'Delete tag "{tag}"?'):
+            return
+        self.modifier.remove_tag(tag)
+        self._reload()
 
     def _toggle_person_avatar(self, person: str):
         # toggle/set/replace/remove profile picture for person
@@ -258,10 +341,9 @@ class EditEntriesWidget(QWidget):
         dlg.resize(420, 260)
 
         v = QVBoxLayout(dlg)
-        v.addWidget(QLabel("One nickname per line:"))
-
+        v.addWidget(QLabel("Comma-separated list of nicknames:"))
         te = QTextEdit()
-        te.setPlainText("\n".join(self.modifier.get_nicknames(person)))
+        te.setPlainText(", ".join(self.data_storage.get_nicknames(person)))
         v.addWidget(te, 1)
 
         btn_row = QHBoxLayout()
@@ -278,8 +360,37 @@ class EditEntriesWidget(QWidget):
         cancel_btn.clicked.connect(dlg.reject)
 
         if dlg.exec() == QDialog.Accepted:
-            lines = [l.strip() for l in te.toPlainText().splitlines() if l.strip()]
+            lines = [l.strip() for l in te.toPlainText().split(",") if l.strip()]
             self.modifier.set_nicknames(person, lines)
+            self._reload()
+
+    def _edit_tags(self, person: str):
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"Edit tags — {person}")
+        dlg.resize(420, 260)
+
+        v = QVBoxLayout(dlg)
+        v.addWidget(QLabel("Comma-separated list of tags:"))
+        te = QTextEdit()
+        te.setPlainText(", ".join(self.data_storage.get_tags(person)))
+        v.addWidget(te, 1)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        save_btn = QPushButton("Save")
+        save_btn.setCursor(Qt.PointingHandCursor)
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setCursor(Qt.PointingHandCursor)
+        btn_row.addWidget(save_btn)
+        btn_row.addWidget(cancel_btn)
+        v.addLayout(btn_row)
+
+        save_btn.clicked.connect(dlg.accept)
+        cancel_btn.clicked.connect(dlg.reject)
+
+        if dlg.exec() == QDialog.Accepted:
+            lines = [l.strip() for l in te.toPlainText().split(",") if l.strip()]
+            self.modifier.set_tags(person, lines)
             self._reload()
 
     def _update_selector_avatar_cursors(self):
@@ -365,21 +476,23 @@ class EditEntriesWidget(QWidget):
             w.setCursor(desired_cursor)
 
     def _reload(self):
-        # reload storage and rebuild selector
         self.storage.load_index()
         self.modifier = QuoteModifier(self.storage.root)
-
+        
         layout = self.layout()
         layout.removeWidget(self.selector)
         self.selector.deleteLater()
-
+        
+        # Re-instantiate with the SAME settings as __init__
         self.selector = PersonGroupSelector(
             self.storage,
             show_checkboxes=False,
+            show_global_tags=False, 
             group_right_widget_builder=self._group_buttons,
-            person_right_widget_builder=self._person_buttons
+            person_right_widget_builder=self._person_buttons,
+            tag_right_widget_builder=self._tag_buttons 
         )
-
+        
         self.selector.avatar_click_handler = self._toggle_person_avatar
         self._update_selector_avatar_cursors()
         layout.addWidget(self.selector)

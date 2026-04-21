@@ -22,6 +22,9 @@ _ICON_THEME_CANDIDATES = {
     "note": ["note", "document-edit", "edit", "sticky-note", "emblem-documents"],
     "remove": ["list-remove", "remove", "edit-clear", "user-trash"],
     "settings": ["settings", "configure", "emblem-system", "preferences-system"],
+    "tag": ["tag", "label", "emblem-tag", "document-tag"],
+    "copy_enabled": ["list-add, emblem-success", "emblem-accept", "mark-v", "accept-button"],
+    "copy_disabled": ["list-remove, emblem-error", "emblem-reject", "mark-x", "error-button"],
 }
 
 _FALLBACK_STYLE_ICON = {
@@ -39,6 +42,9 @@ _FALLBACK_STYLE_ICON = {
     "note": QStyle.SP_FileDialogDetailedView,
     "remove": QStyle.SP_DialogNoButton,
     "settings": QStyle.SP_FileDialogDetailedView,
+    "tag": QStyle.SP_FileIcon,
+    "copy_enabled": QStyle.SP_DialogYesButton,
+    "copy_disabled": QStyle.SP_DialogNoButton,
 }
 
 _icon_widgets = []                # list of (weakref, key, size)

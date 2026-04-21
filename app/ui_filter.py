@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QSpinBox, QPushButton, QComboBox, QDateEdit,
-    QSizePolicy
+    QSizePolicy, QCheckBox
 )
 from PySide6.QtCore import Qt, QDate, Signal
 from PySide6.QtGui import QStandardItemModel, QStandardItem
@@ -192,6 +192,11 @@ class FilterPanel(QWidget):
         char_layout.addWidget(self.char_from_input)
         char_layout.addWidget(self.char_to_input)
         left_layout.addLayout(char_layout)
+
+        # Add note search toggle
+        self.note_search_checkbox = QCheckBox("Include Notes in search")
+        self.note_search_checkbox.setChecked(False)  # Default to off
+        left_layout.addWidget(self.note_search_checkbox)
 
         left_layout.addStretch(1)
         self.setSizePolicy(
@@ -394,6 +399,12 @@ class FilterPanel(QWidget):
                 if hasattr(self.person_group_selector, "get_effective_people")
                 else None
             ),
+            "tags": (
+                self.person_group_selector.get_effective_tags()
+                if hasattr(self.person_group_selector, "get_effective_tags")
+                else None
+            ),
+            "search_notes": self.note_search_checkbox.isChecked() if hasattr(self, 'note_search_checkbox') else False,
         }
 
         self.filters_changed.emit(self._active_filters)
@@ -411,6 +422,13 @@ class FilterPanel(QWidget):
                 logging.exception("self.person_group_selector.clear_selection() failed")
                 raise
 
+        # Clear note search
+        if hasattr(self, 'note_search_checkbox'):
+            try:
+                self.note_search_checkbox.setChecked(False)
+            except Exception:
+                pass
+
         # Clear other controls
         self.date_from_input.clear()
         self.date_to_input.clear()
@@ -421,8 +439,15 @@ class FilterPanel(QWidget):
         # Re-evaluate sort availability
         self.on_people_selection_changed()
 
-        self._active_filters = {}
-        self.filters_changed.emit(self._active_filters)
+        # Clear tag selection
+        if hasattr(self.person_group_selector, "clear_selection"):
+            try:
+                self.person_group_selector.clear_selection()
+            except Exception:
+                pass
+
+            self._active_filters = {}
+            self.filters_changed.emit(self._active_filters)
 
     # Per-panel resets
     def reset_sort(self):

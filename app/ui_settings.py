@@ -2,7 +2,7 @@ from pathlib import Path
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout,
     QPushButton, QLineEdit, QLabel,
-    QFileDialog, QWidget, QTabWidget
+    QFileDialog, QWidget, QTabWidget, QMessageBox
 )
 
 from .settings import Settings
@@ -56,6 +56,23 @@ class SettingsDialog(QDialog):
         # people tab
         self.people_tab = None
         self._create_people_tab()
+
+        # Add buttons for quote management
+        quote_management_layout = QVBoxLayout()
+        quote_management_layout.addWidget(QLabel("Destructive operations:"))
+        
+        self.sort_quotes_btn = QPushButton("Remove Quote Order")
+        self.sort_quotes_btn.setStyleSheet("color: red;")
+        self.sort_quotes_btn.clicked.connect(self.sort_quotes)
+        quote_management_layout.addWidget(self.sort_quotes_btn)
+        
+        self.remove_all_quotes_btn = QPushButton("Remove All Quotes")
+        self.remove_all_quotes_btn.setStyleSheet("color: red;")
+        self.remove_all_quotes_btn.clicked.connect(self.remove_all_quotes)
+        quote_management_layout.addWidget(self.remove_all_quotes_btn)
+        
+        self.general_layout.addLayout(quote_management_layout)
+        self.general_layout.addStretch()
 
         # dialog buttons
         btns_layout = QHBoxLayout()
@@ -124,3 +141,39 @@ class SettingsDialog(QDialog):
         self._create_people_tab()
 
         super().accept()
+
+    def sort_quotes(self):
+        # Show confirmation dialog
+        reply = QMessageBox.question(
+            self,
+            "Confirm",
+            "WARNING: Are you sure you want to remove quote add order? This will sort all quotes by date in the stored data. This action cannot be undone!",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            quotez_path = Path(self.settings.data.get("quotez_location", ""))
+            if quotez_path.exists():
+                # Create quote modifier to call sort_quotes
+                from .write_manager import QuoteModifier
+                modifier = QuoteModifier(quotez_path)
+                modifier.sort_quotes()
+
+    def remove_all_quotes(self):
+        # Show confirmation dialog
+        reply = QMessageBox.question(
+            self,
+            "Confirm",
+            "WARNING: Are you sure you want to remove all quotes? This will also remove all person data. This action cannot be undone!",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            quotez_path = Path(self.settings.data.get("quotez_location", ""))
+            if quotez_path.exists():
+                # Create quote modifier to call remove_all_quotes
+                from .write_manager import QuoteModifier
+                modifier = QuoteModifier(quotez_path)
+                modifier.remove_all_quotes()

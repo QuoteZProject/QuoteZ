@@ -3,6 +3,7 @@ import json
 import shutil
 import re
 from typing import Optional, List
+from datetime import datetime
 
 from PySide6.QtWidgets import (
     QFrame, QLabel, QPushButton,
@@ -12,7 +13,6 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QPixmap, QPainter, QPainterPath
 from PySide6.QtCore import Qt, QRectF
 from pathlib import Path
-import json
 
 from .icons import icon
 from .ui_add_quote import QuoteDialog
@@ -172,8 +172,14 @@ class QuoteItem(QFrame):
             people_layout.addWidget(segment)
 
         # Format the details line
+
+        dt = datetime.fromisoformat(quote.date.replace('Z', '+00:00'))
+
+        date_part = dt.date()      # datetime.date object
+        time_part = dt.time()      # datetime.time object
+
         details_parts = [
-            f"Date: {format_date(quote.date)} at {format_time(quote.time)}",
+            f"Date: {dt.strftime('%d.%m.%Y')} at {time_part} UTC",
         ]
         
         if quote.url:
@@ -184,6 +190,9 @@ class QuoteItem(QFrame):
             
         if quote.tags:
             details_parts.append(f"Tags: {', '.join(quote.tags)}")
+            
+        if quote.global_tags:
+            details_parts.append(f"Global Tags: {', '.join(quote.global_tags)}")
 
         details = " | ".join(details_parts)
         
@@ -286,6 +295,9 @@ class QuoteItem(QFrame):
                 s = seg.speaker
                 t = seg.text
                 if s:
+                    # Skip copying segments from people marked with dont_copy = True
+                    if self.storage.get_dont_copy(s):
+                        continue
                     if s not in speaker_choice:
                         nickname = self._choose_nickname(s, copy_all)
                         speaker_choice[s] = nickname
@@ -326,7 +338,7 @@ class QuoteItem(QFrame):
             return
 
         modifier = QuoteModifier(self.storage.root)
-        modifier.remove_quote(self.quote.date, self.quote.time, self.quote.url, self.quote.timestamp, self.quote.tags, self.quote.note)
+        modifier.remove_quote(self.quote.date, self.quote.url, self.quote.timestamp, self.quote.tags, self.quote.note)
         self.window().refresh_storage()
 
     def _on_edit(self):

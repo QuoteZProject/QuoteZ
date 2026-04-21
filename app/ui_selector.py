@@ -74,6 +74,8 @@ class PersonGroupSelector(QWidget):
         show_checkboxes: bool = True,
         group_right_widget_builder=None,
         person_right_widget_builder=None,
+        tag_right_widget_builder=None, 
+        show_global_tags: bool = True,
     ):
         super().__init__()
 
@@ -95,6 +97,8 @@ class PersonGroupSelector(QWidget):
         self.show_checkboxes = show_checkboxes
         self.group_right_widget_builder = group_right_widget_builder
         self.person_right_widget_builder = person_right_widget_builder
+        self.tag_right_widget_builder = tag_right_widget_builder
+        self.show_global_tags = show_global_tags
 
         # External handlers: avatar_click_handler(person_name), person_right_click_handler(person_name, global_pos)
         self.avatar_click_handler = None
@@ -175,7 +179,7 @@ class PersonGroupSelector(QWidget):
             root.addWidget(self._create_group(group, members))
 
         if self.ungrouped:
-            lbl = QLabel("Others")
+            lbl = QLabel("People")
             lbl.setStyleSheet("font-weight: bold; margin-top: 6px;")
             root.addWidget(lbl)
 
@@ -183,6 +187,26 @@ class PersonGroupSelector(QWidget):
                 row, cb = self._create_person_row(None, p)
                 if cb:
                     self.ungrouped_rows[p] = cb
+                root.addWidget(row)
+
+        # Add tags section
+        all_tags_data = self._get_all_tags_with_metadata()
+        
+        # Filter out global tags if show_global_tags is False
+        if not self.show_global_tags: # Logic check: if user wants to hide them
+             # We only keep tags where is_global is False
+             display_tags = [t for t, is_global in all_tags_data if not is_global]
+        else:
+             display_tags = [t for t, is_global in all_tags_data]
+
+        if display_tags:
+            lbl = QLabel("Tags")
+            lbl.setStyleSheet("font-weight: bold; margin-top: 6px;")
+            root.addWidget(lbl)
+            
+            for tag in sorted(display_tags):
+                # Pass the builder to the row creator
+                row = self._create_tag_row(tag, self.tag_right_widget_builder)
                 root.addWidget(row)
 
         root.addStretch()
@@ -367,6 +391,39 @@ class PersonGroupSelector(QWidget):
         for (group, _), row in self.person_rows.items():
             row.setEnabled(self.group_enabled.get(group, True))
 
+    def _on_tag_toggled(self, tag, checked):
+        # Handle tag checkbox state changes
+        # This method is called when a tag checkbox is toggled
+        self.selection_changed.emit()
+
+    def get_effective_tags(self):
+        """Return the set of currently selected tags for filtering,
+        or None if all tags are selected (no filter)."""
+        if not self.show_checkboxes:
+            return None
+
+        effective = set()
+        
+        # If no tag checkboxes exist, return None (no filter)
+        if not hasattr(self, 'tag_checkboxes'):
+            return None
+
+        # Check each tag checkbox
+        for tag, cb in self.tag_checkboxes.items():
+            if cb.isChecked():
+                effective.add(tag)
+
+        # If all tags are selected, return None (no filter)
+        all_tags = self._get_all_tags()
+        if effective == all_tags:
+            return None
+            
+        # If no tags selected, return empty set
+        if not effective:
+            return set()
+            
+        return effective
+
     def reload_from_storage(self, storage: QuoteStorage):
         self.storage = storage
         self._load_data()
@@ -403,6 +460,91 @@ class PersonGroupSelector(QWidget):
 
         return effective
 
+    def _get_all_tags(self):
+        """Get all unique tags from all quotes in the storage."""
+        all_tags = set()
+        for idx in self.storage.index:
+            # skip stale
+            if not idx.source_file.exists():
+                continue
+            # Add tags from quote index
+            all_tags.update(idx.tags)
+            # Load the full quote to get global tags
+            quote = self.storage.load_quote(idx)
+            if quote and hasattr(quote, 'global_tags') and quote.global_tags:
+                all_tags.update(quote.global_tags)
+        return all_tags
+    
+    def _get_all_tags_with_metadata(self):
+        """Returns a list of (tag_name, is_global) tuples."""
+        tags_dict = {} # Use a dict to track if a tag has been seen as global
+        
+        for idx in self.storage.index:
+            if not idx.source_file.exists():
+                continue
+            
+            # Tags from the index (we'll treat these as 'local' to the file)
+            for t in idx.tags:
+                if t not in tags_dict:
+                    tags_dict[t] = False
+            
+            # Tags from the global property (we'll treat these as 'global')
+            quote = self.storage.load_quote(idx)
+            if quote and hasattr(quote, 'global_tags') and quote.global_tags:
+                for t in quote.global_tags:
+                    # If it's found in global_tags, we mark it True
+                    tags_dict[t] = True
+                    
+        return [(tag, is_global) for tag, is_global in tags_dict.items()]
+
+    def _create_tag_row(self, tag, builder=None):
+        """Create a row for a tag similar to groups and people."""
+        row = Row(self)
+        h = QHBoxLayout(row)
+        h.setContentsMargins(4, 2, 4, 2)
+
+        # Tag icon
+        icon_btn = QToolButton()
+        icon_btn.setAutoRaise(True)
+        icon_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        icon_btn.setFixedSize(18, 18)
+        icon_btn.setCursor(Qt.ArrowCursor)
+        icon_btn.setFocusPolicy(Qt.NoFocus)
+        icon_btn.setProperty("is_tag_icon", True)
+        icon(icon_btn, "tag", 14)
+
+        # Tag label
+        label = QLabel(tag)
+        label.setProperty("tag_name_plain", tag)
+
+        # Add checkbox for tag selection
+        cb = None
+        if self.show_checkboxes:
+            cb = QCheckBox()
+            cb.setChecked(True)
+            cb.setCursor(Qt.PointingHandCursor)
+            cb.toggled.connect(
+                lambda v, t=tag: self._on_tag_toggled(t, v)
+            )
+            # Store checkbox for tag in a dictionary
+            if not hasattr(self, 'tag_checkboxes'):
+                self.tag_checkboxes = {}
+            self.tag_checkboxes[tag] = cb
+
+        h.addWidget(icon_btn)
+        h.addWidget(label)
+        h.addStretch()
+        
+        if builder:
+            btn_widget = builder(tag)
+            if btn_widget:
+                h.addWidget(btn_widget)
+
+        if cb:
+            h.addWidget(cb)
+
+        return row
+
     def clear_selection(self):
         for cb in self.group_checkboxes.values():
             cb.setChecked(True)
@@ -412,6 +554,11 @@ class PersonGroupSelector(QWidget):
 
         for cb in self.ungrouped_rows.values():
             cb.setChecked(True)
+
+        # Clear tag selections
+        if hasattr(self, 'tag_checkboxes'):
+            for cb in self.tag_checkboxes.values():
+                cb.setChecked(True)
 
         self.group_enabled = {g: True for g in self.groups}
 
